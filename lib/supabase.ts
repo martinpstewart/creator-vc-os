@@ -77,13 +77,19 @@ export async function getCustomerCampaignOrders(email: string, campaignId: numbe
   }[]
 }
 
-// Backer list for campaign detail page — range overrides PostgREST's default 1,000-row cap
-export async function getCampaignBackerList(campaignId: number) {
-  const { data, error } = await supabase
-    .rpc('get_campaign_backer_list', { p_campaign_id: campaignId })
-    .range(0, 9999)
+export type BackerRow = { email: string; full_name: string | null; total_spend: number | null; order_count: number; total_count: number }
+
+// Backer list for campaign detail page — paginated inside SQL to stay under PostgREST max-rows
+export async function getCampaignBackerList(campaignId: number, page = 1, pageSize = 100) {
+  const { data, error } = await supabase.rpc('get_campaign_backer_list', {
+    p_campaign_id: campaignId,
+    p_page: page,
+    p_page_size: pageSize,
+  })
   if (error) throw error
-  return (data ?? []) as { email: string; full_name: string | null; total_spend: number | null; order_count: number }[]
+  const rows = (data ?? []) as BackerRow[]
+  const total = rows.length > 0 ? Number(rows[0].total_count) : 0
+  return { backers: rows, total }
 }
 
 // All order line items for a campaign (CSV export)

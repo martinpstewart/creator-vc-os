@@ -2,6 +2,7 @@ import { getCampaignStats, getCampaignBackerList, getCampaignUnitsSold } from '@
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import CampaignExports from '@/components/CampaignExports'
+import CampaignBackers from '@/components/CampaignBackers'
 
 export const dynamic = 'force-dynamic'
 
@@ -22,9 +23,9 @@ export default async function CampaignDetailPage({
   const campaignId = parseInt(id, 10)
   if (isNaN(campaignId)) notFound()
 
-  const [allStats, backers, unitsSold] = await Promise.all([
+  const [allStats, { backers: initialBackers, total: totalBackers }, unitsSold] = await Promise.all([
     getCampaignStats(),
-    getCampaignBackerList(campaignId),
+    getCampaignBackerList(campaignId, 1, 100),
     getCampaignUnitsSold(campaignId),
   ])
 
@@ -34,7 +35,9 @@ export default async function CampaignDetailPage({
   const avgSpend = campaign.total_spend !== null && campaign.total_customers > 0
     ? campaign.total_spend / campaign.total_customers
     : null
-  const totalUnits = unitsSold.reduce((s, u) => s + Number(u.total_quantity), 0)
+  const totalUnits = unitsSold.length > 0
+    ? unitsSold.reduce((s, u) => s + Number(u.total_quantity), 0)
+    : null
 
   return (
     <div className="p-8">
@@ -102,46 +105,12 @@ export default async function CampaignDetailPage({
         </div>
       )}
 
-      {/* Backers list */}
-      <div className="bg-zinc-900 border border-zinc-800 rounded-xl">
-        <div className="px-6 py-4 border-b border-zinc-800 flex items-center justify-between">
-          <h2 className="text-sm font-semibold text-white">Backers</h2>
-          <span className="text-xs text-zinc-500">{fmt(backers.length)} shown</span>
-        </div>
-        {backers.length > 0 ? (
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-zinc-800">
-                <th className="text-left px-6 py-3 text-xs font-medium text-zinc-500">Backer</th>
-                <th className="text-left px-6 py-3 text-xs font-medium text-zinc-500">Email</th>
-                <th className="text-right px-6 py-3 text-xs font-medium text-zinc-500">Orders</th>
-                <th className="text-right px-6 py-3 text-xs font-medium text-zinc-500">Spend</th>
-              </tr>
-            </thead>
-            <tbody>
-              {backers.map((b) => (
-                <tr key={b.email} className="border-b border-zinc-800/50 hover:bg-zinc-800/30 transition-colors">
-                  <td className="px-6 py-3.5">
-                    <Link
-                      href={`/customers/${encodeURIComponent(b.email)}?campaign=${campaignId}`}
-                      className="font-medium text-white hover:text-zinc-300 transition-colors"
-                    >
-                      {b.full_name || '—'}
-                    </Link>
-                  </td>
-                  <td className="px-6 py-3.5 text-zinc-400">{b.email}</td>
-                  <td className="px-6 py-3.5 text-right text-zinc-300">{b.order_count}</td>
-                  <td className="px-6 py-3.5 text-right font-medium text-white">
-                    {b.total_spend !== null ? fmt(b.total_spend, true) : '—'}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        ) : (
-          <p className="px-6 py-8 text-center text-zinc-500 text-sm">No backers found</p>
-        )}
-      </div>
+      {/* Backers list — paginated client component */}
+      <CampaignBackers
+        campaignId={campaignId}
+        initialBackers={initialBackers}
+        initialTotal={totalBackers}
+      />
     </div>
   )
 }
