@@ -105,16 +105,15 @@ export default function CustomerCampaigns({
     : undefined
 
   async function fetchOrders(campaignId: number) {
-    if (orders[campaignId]) return
+    if (orders[campaignId] !== undefined) return
     setLoading(campaignId)
     try {
       const { data, error } = await supabase.rpc('get_customer_campaign_orders', {
         p_email: email,
         p_campaign_id: campaignId,
       })
-      if (!error && data) {
-        setOrders(prev => ({ ...prev, [campaignId]: data as OrderLine[] }))
-      }
+      // Always set orders (even on error / null data) so expanded row never stays blank
+      setOrders(prev => ({ ...prev, [campaignId]: error ? [] : ((data ?? []) as OrderLine[]) }))
     } finally {
       setLoading(null)
     }
@@ -178,10 +177,10 @@ export default function CustomerCampaigns({
           </div>
           {loading === initialCampaignId ? (
             <p className="px-8 py-6 text-xs text-zinc-500 animate-pulse">Loading orders…</p>
-          ) : orders[initialCampaignId!] ? (
+          ) : orders[initialCampaignId!] !== undefined ? (
             <OrdersTable lines={orders[initialCampaignId!]} />
           ) : (
-            <p className="px-8 py-6 text-xs text-zinc-500">Loading…</p>
+            <p className="px-8 py-6 text-xs text-zinc-500 animate-pulse">Loading orders…</p>
           )}
         </div>
       )}
@@ -231,9 +230,11 @@ export default function CustomerCampaigns({
                         <td colSpan={4} className="px-0 py-0">
                           {loading === camp.campaign_id ? (
                             <p className="px-8 py-4 text-xs text-zinc-500 animate-pulse">Loading orders…</p>
-                          ) : orders[camp.campaign_id] ? (
+                          ) : orders[camp.campaign_id] !== undefined ? (
                             <OrdersTable lines={orders[camp.campaign_id]} />
-                          ) : null}
+                          ) : (
+                            <p className="px-8 py-4 text-xs text-zinc-500">No order details found.</p>
+                          )}
                         </td>
                       </tr>
                     )}
