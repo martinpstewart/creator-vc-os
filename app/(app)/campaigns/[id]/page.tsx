@@ -31,9 +31,9 @@ export default async function CampaignDetailPage({
   const campaign = allStats.find(c => c.campaign_id === campaignId)
   if (!campaign) notFound()
 
-  const avgSpend = campaign.total_customers > 0
+  const avgSpend = campaign.total_spend !== null && campaign.total_customers > 0
     ? campaign.total_spend / campaign.total_customers
-    : 0
+    : null
   const totalUnits = unitsSold.reduce((s, u) => s + Number(u.total_quantity), 0)
 
   return (

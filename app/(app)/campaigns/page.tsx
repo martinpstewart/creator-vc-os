@@ -52,7 +52,9 @@ export default async function CampaignsPage() {
                 <td className="px-6 py-4 text-right text-zinc-300">{fmt(c.total_orders)}</td>
                 <td className="px-6 py-4 text-right font-medium text-white">{fmt(c.total_spend, true)}</td>
                 <td className="px-6 py-4 text-right text-zinc-300">
-                  {fmt(c.total_customers > 0 ? c.total_spend / c.total_customers : 0, true)}
+                  {c.total_spend !== null && c.total_customers > 0
+                    ? fmt(c.total_spend / c.total_customers, true)
+                    : '—'}
                 </td>
               </tr>
             ))}
