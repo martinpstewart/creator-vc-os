@@ -26,6 +26,39 @@ function OrdersTable({ lines }: { lines: OrderLine[] }) {
   if (lines.length === 0) {
     return <p className="px-8 py-4 text-xs text-zinc-500">No order details found for this campaign.</p>
   }
+
+  const isIsod = lines.every(l => l.purchase_type === 'isod')
+
+  if (isIsod) {
+    return (
+      <table className="w-full text-xs">
+        <thead>
+          <tr className="border-b border-zinc-800/50">
+            <th className="text-left px-8 py-2 text-zinc-500 font-medium">Order Ref</th>
+            <th className="text-left px-4 py-2 text-zinc-500 font-medium">Date</th>
+            <th className="text-right px-6 py-2 text-zinc-500 font-medium">
+              <span className="inline-flex px-2 py-0.5 rounded-full bg-zinc-800 text-zinc-600 font-normal">No pricing data</span>
+            </th>
+          </tr>
+        </thead>
+        <tbody>
+          {lines.map((line, i) => {
+            const parts = line.variant_name?.split(' · ') ?? []
+            const ref = parts[0] ?? line.order_id
+            const date = parts[1] ?? '—'
+            return (
+              <tr key={i} className="border-b border-zinc-800/30 last:border-0">
+                <td className="px-8 py-2.5 font-mono text-zinc-300">{ref}</td>
+                <td className="px-4 py-2.5 text-zinc-500">{date}</td>
+                <td className="px-6 py-2.5 text-right text-zinc-600 italic">ISOD 95</td>
+              </tr>
+            )
+          })}
+        </tbody>
+      </table>
+    )
+  }
+
   return (
     <table className="w-full text-xs">
       <thead>

@@ -112,13 +112,19 @@ export default function DashboardTabs({
           </thead>
           <tbody>
             {campaignStats.map((c) => (
-              <tr key={c.campaign_id} className="border-b border-zinc-800/50">
-                <td className="px-6 py-4 font-medium text-white">{c.campaign_name}</td>
+              <tr key={c.campaign_id} className="border-b border-zinc-800/50 hover:bg-zinc-800/30 transition-colors">
+                <td className="px-6 py-4 font-medium text-white">
+                  <Link href={`/campaigns/${c.campaign_id}`} className="hover:text-zinc-300 transition-colors">
+                    {c.campaign_name}
+                  </Link>
+                </td>
                 <td className="px-6 py-4 text-right text-zinc-300">{fmt(c.total_customers)}</td>
                 <td className="px-6 py-4 text-right text-zinc-300">{fmt(c.total_orders)}</td>
                 <td className="px-6 py-4 text-right font-medium text-white">{fmt(c.total_spend, true)}</td>
                 <td className="px-6 py-4 text-right text-zinc-300">
-                  {fmt(c.total_customers > 0 ? c.total_spend / c.total_customers : 0, true)}
+                  {c.total_spend !== null && c.total_customers > 0
+                    ? fmt(c.total_spend / c.total_customers, true)
+                    : '—'}
                 </td>
               </tr>
             ))}
