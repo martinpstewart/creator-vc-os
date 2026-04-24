@@ -97,6 +97,7 @@ export default function CustomerCampaigns({
   const [tab, setTab] = useState<'this' | 'all'>(initialCampaignId ? 'this' : 'all')
   const [expanded, setExpanded] = useState<number | null>(null)
   const [orders, setOrders] = useState<Record<number, OrderLine[]>>({})
+  const [fetchErrors, setFetchErrors] = useState<Record<number, string>>({})
   const [loading, setLoading] = useState<number | null>(null)
   const supabase = createClient()
 
@@ -112,8 +113,14 @@ export default function CustomerCampaigns({
         p_email: email,
         p_campaign_id: campaignId,
       })
-      // Always set orders (even on error / null data) so expanded row never stays blank
-      setOrders(prev => ({ ...prev, [campaignId]: error ? [] : ((data ?? []) as OrderLine[]) }))
+      if (error) {
+        console.error('[fetchOrders] Supabase RPC error for campaign', campaignId, error)
+        setFetchErrors(prev => ({ ...prev, [campaignId]: `${error.code ?? ''}: ${error.message}` }))
+        setOrders(prev => ({ ...prev, [campaignId]: [] }))
+      } else {
+        console.log('[fetchOrders] campaign', campaignId, 'rows:', data?.length ?? 0, data)
+        setOrders(prev => ({ ...prev, [campaignId]: (data ?? []) as OrderLine[] }))
+      }
     } finally {
       setLoading(null)
     }
@@ -177,6 +184,8 @@ export default function CustomerCampaigns({
           </div>
           {loading === initialCampaignId ? (
             <p className="px-8 py-6 text-xs text-zinc-500 animate-pulse">Loading orders…</p>
+          ) : fetchErrors[initialCampaignId!] ? (
+            <p className="px-8 py-6 text-xs text-red-400">Error: {fetchErrors[initialCampaignId!]}</p>
           ) : orders[initialCampaignId!] !== undefined ? (
             <OrdersTable lines={orders[initialCampaignId!]} />
           ) : (
@@ -230,6 +239,8 @@ export default function CustomerCampaigns({
                         <td colSpan={4} className="px-0 py-0">
                           {loading === camp.campaign_id ? (
                             <p className="px-8 py-4 text-xs text-zinc-500 animate-pulse">Loading orders…</p>
+                          ) : fetchErrors[camp.campaign_id] ? (
+                            <p className="px-8 py-4 text-xs text-red-400">Error: {fetchErrors[camp.campaign_id]}</p>
                           ) : orders[camp.campaign_id] !== undefined ? (
                             <OrdersTable lines={orders[camp.campaign_id]} />
                           ) : (
