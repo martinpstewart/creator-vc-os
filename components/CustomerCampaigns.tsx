@@ -34,26 +34,21 @@ function OrdersTable({ lines }: { lines: OrderLine[] }) {
       <table className="w-full text-xs">
         <thead>
           <tr className="border-b border-zinc-800/50">
-            <th className="text-left px-8 py-2 text-zinc-500 font-medium">Order Ref</th>
-            <th className="text-left px-4 py-2 text-zinc-500 font-medium">Date</th>
-            <th className="text-right px-6 py-2 text-zinc-500 font-medium">
-              <span className="inline-flex px-2 py-0.5 rounded-full bg-zinc-800 text-zinc-600 font-normal">No pricing data</span>
-            </th>
+            <th className="text-left px-8 py-2 text-zinc-500 font-medium">SKU</th>
+            <th className="text-left px-4 py-2 text-zinc-500 font-medium">Order Ref</th>
+            <th className="text-right px-6 py-2 text-zinc-500 font-medium">Price</th>
           </tr>
         </thead>
         <tbody>
-          {lines.map((line, i) => {
-            const parts = line.variant_name?.split(' · ') ?? []
-            const ref = parts[0] ?? line.order_id
-            const date = parts[1] ?? '—'
-            return (
-              <tr key={i} className="border-b border-zinc-800/30 last:border-0">
-                <td className="px-8 py-2.5 font-mono text-zinc-300">{ref}</td>
-                <td className="px-4 py-2.5 text-zinc-500">{date}</td>
-                <td className="px-6 py-2.5 text-right text-zinc-600 italic">ISOD 95</td>
-              </tr>
-            )
-          })}
+          {lines.map((line, i) => (
+            <tr key={i} className="border-b border-zinc-800/30 last:border-0">
+              <td className="px-8 py-2.5 font-mono text-zinc-300">{line.product_name}</td>
+              <td className="px-4 py-2.5 text-zinc-500">{line.order_id}</td>
+              <td className="px-6 py-2.5 text-right text-zinc-300">
+                {line.price_paid !== null ? fmt(line.price_paid, true) : '—'}
+              </td>
+            </tr>
+          ))}
         </tbody>
       </table>
     )
