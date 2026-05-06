@@ -35,6 +35,7 @@ export default function CampaignBackers({
   const [backers, setBackers] = useState<BackerRow[]>(initialBackers)
   const [total, setTotal] = useState(initialTotal)
   const [loading, setLoading] = useState(false)
+  const [fetchError, setFetchError] = useState<string | null>(null)
   const supabase = createClient()
 
   const totalPages = Math.ceil(total / PAGE_SIZE)
@@ -42,18 +43,26 @@ export default function CampaignBackers({
   async function goToPage(p: number) {
     if (p < 1 || p > totalPages || p === page) return
     setLoading(true)
+    setFetchError(null)
     try {
       const { data, error } = await supabase.rpc('get_campaign_backer_list', {
         p_campaign_id: campaignId,
         p_page: p,
         p_page_size: PAGE_SIZE,
       })
-      if (!error && data) {
-        setBackers(data as BackerRow[])
-        const t = data.length > 0 ? Number((data[0] as BackerRow).total_count) : total
-        setTotal(t)
-        setPage(p)
+      if (error) {
+        console.error('[CampaignBackers] RPC error', error)
+        setFetchError(`${error.code ?? ''}: ${error.message}`)
+        return
       }
+      const rows = (data ?? []) as BackerRow[]
+      setBackers(rows)
+      const t = rows.length > 0 ? Number(rows[0].total_count) : total
+      setTotal(t)
+      setPage(p)
+    } catch (e) {
+      console.error('[CampaignBackers] unexpected error', e)
+      setFetchError(e instanceof Error ? e.message : String(e))
     } finally {
       setLoading(false)
     }
@@ -71,7 +80,9 @@ export default function CampaignBackers({
         </span>
       </div>
 
-      {backers.length > 0 ? (
+      {fetchError ? (
+        <p className="px-6 py-8 text-center text-red-400 text-sm">Error loading backers: {fetchError}</p>
+      ) : backers.length > 0 ? (
         <>
           <table className={`w-full text-sm transition-opacity ${loading ? 'opacity-40' : ''}`}>
             <thead>

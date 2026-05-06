@@ -23,9 +23,24 @@ export async function middleware(request: NextRequest) {
     }
   )
 
-  const { data: { user } } = await supabase.auth.getUser()
-
   const isLoginPage = request.nextUrl.pathname === '/login'
+
+  let user: { id: string } | null = null
+  try {
+    const timeout = new Promise<never>((_, reject) =>
+      setTimeout(() => reject(new Error('auth getUser timeout')), 3000)
+    )
+    const result = await Promise.race([supabase.auth.getUser(), timeout])
+    user = result.data.user
+  } catch (e) {
+    console.error('[middleware] auth check failed', e)
+    // On auth failure, treat as unauthenticated but don't bounce away from /login
+    // (avoids redirect loops if Supabase is down).
+    if (isLoginPage) return supabaseResponse
+    const url = request.nextUrl.clone()
+    url.pathname = '/login'
+    return NextResponse.redirect(url)
+  }
 
   if (!user && !isLoginPage) {
     const url = request.nextUrl.clone()
