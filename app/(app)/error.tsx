@@ -1,6 +1,7 @@
 'use client'
 
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
+import { useRouter } from 'next/navigation'
 
 export default function AppError({
   error,
@@ -9,9 +10,18 @@ export default function AppError({
   error: Error & { digest?: string }
   reset: () => void
 }) {
+  const router = useRouter()
+  const [retrying, setRetrying] = useState(false)
+
   useEffect(() => {
     console.error('[app] route error', error)
   }, [error])
+
+  function manualRetry() {
+    setRetrying(true)
+    router.refresh()
+    reset()
+  }
 
   return (
     <div className="flex h-full items-center justify-center p-8">
@@ -24,10 +34,11 @@ export default function AppError({
           <p className="text-xs text-zinc-600 font-mono mb-4">ref: {error.digest}</p>
         )}
         <button
-          onClick={() => reset()}
-          className="px-4 py-2 text-sm rounded-md bg-white text-zinc-900 hover:bg-zinc-200 transition-colors font-medium"
+          onClick={manualRetry}
+          disabled={retrying}
+          className="px-4 py-2 text-sm rounded-md bg-white text-zinc-900 hover:bg-zinc-200 disabled:opacity-50 transition-colors font-medium"
         >
-          Try again
+          {retrying ? 'Retrying…' : 'Try again'}
         </button>
       </div>
     </div>
