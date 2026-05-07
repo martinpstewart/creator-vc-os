@@ -2,7 +2,7 @@ import { getCampaignStats, getCampaignBackerList, getCampaignUnitsSold } from '@
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import CampaignExports from '@/components/CampaignExports'
-import CampaignBackers from '@/components/CampaignBackers'
+import CampaignDetailTabs from '@/components/CampaignDetailTabs'
 
 export const dynamic = 'force-dynamic'
 
@@ -78,38 +78,13 @@ export default async function CampaignDetailPage({
         <CampaignExports campaignId={campaignId} campaignName={campaign.campaign_name} />
       </div>
 
-      {/* Products breakdown */}
-      {unitsSold.length > 0 && (
-        <div className="bg-zinc-900 border border-zinc-800 rounded-xl mb-8">
-          <div className="px-6 py-4 border-b border-zinc-800">
-            <h2 className="text-sm font-semibold text-white">Products Sold</h2>
-          </div>
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-zinc-800">
-                <th className="text-left px-6 py-3 text-xs font-medium text-zinc-500">Product</th>
-                <th className="text-left px-6 py-3 text-xs font-medium text-zinc-500">Variant</th>
-                <th className="text-right px-6 py-3 text-xs font-medium text-zinc-500">Units Sold</th>
-              </tr>
-            </thead>
-            <tbody>
-              {unitsSold.map((u, i) => (
-                <tr key={i} className="border-b border-zinc-800/50">
-                  <td className="px-6 py-3 text-white">{u.product_name}</td>
-                  <td className="px-6 py-3 text-zinc-400">{u.variant_name || '—'}</td>
-                  <td className="px-6 py-3 text-right text-zinc-300">{fmt(u.total_quantity)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
-
-      {/* Backers list — paginated client component */}
-      <CampaignBackers
+      {/* Tabbed Products / Backers */}
+      <CampaignDetailTabs
         campaignId={campaignId}
+        unitsSold={unitsSold}
+        totalUnits={totalUnits}
         initialBackers={initialBackers}
-        initialTotal={totalBackers}
+        totalBackers={totalBackers}
       />
     </div>
   )
