@@ -29,13 +29,13 @@ type Tab = 'products' | 'backers'
 export default function CampaignDetailTabs({
   campaignId,
   unitsSold,
-  totalUnits,
+  productCount,
   initialBackers,
   totalBackers,
 }: {
   campaignId: number
   unitsSold: UnitsSoldRow[]
-  totalUnits: number | null
+  productCount: number
   initialBackers: BackerRow[]
   totalBackers: number
 }) {
@@ -49,7 +49,7 @@ export default function CampaignDetailTabs({
           active={tab === 'products'}
           onClick={() => setTab('products')}
           label="Products"
-          count={totalUnits ?? unitsSold.length}
+          count={productCount}
         />
         <TabButton
           active={tab === 'backers'}

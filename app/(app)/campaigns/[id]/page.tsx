@@ -38,6 +38,7 @@ export default async function CampaignDetailPage({
   const totalUnits = unitsSold.length > 0
     ? unitsSold.reduce((s, u) => s + Number(u.total_quantity), 0)
     : null
+  const distinctProducts = new Set(unitsSold.map(u => u.product_name)).size
 
   return (
     <div className="p-8">
@@ -82,7 +83,7 @@ export default async function CampaignDetailPage({
       <CampaignDetailTabs
         campaignId={campaignId}
         unitsSold={unitsSold}
-        totalUnits={totalUnits}
+        productCount={distinctProducts}
         initialBackers={initialBackers}
         totalBackers={totalBackers}
       />

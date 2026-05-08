@@ -1,4 +1,5 @@
 import { createClient } from '@supabase/supabase-js'
+import { unstable_cache } from 'next/cache'
 
 // Server-side data client. Stateless on purpose: no auth persistence or
 // background token refresh — those mutate shared state on warm Vercel
@@ -34,34 +35,46 @@ async function withRetry<T>(fn: () => Promise<T>, label: string): Promise<T> {
   }
 }
 
-// Dashboard KPIs — count unique customers from customer_summary
-export async function getKPIs() {
-  return withRetry(async () => {
-    const { count, error } = await crm
-      .from('customer_summary')
-      .select('*', { count: 'exact', head: true })
-    if (error) throw error
-    return { total_customers: count ?? 0 }
-  }, 'getKPIs')
-}
+// Dashboard KPIs — count unique customers from customer_summary.
+// Cached: 60s — value rarely changes minute-to-minute.
+export const getKPIs = unstable_cache(
+  () =>
+    withRetry(async () => {
+      const { count, error } = await crm
+        .from('customer_summary')
+        .select('*', { count: 'exact', head: true })
+      if (error) throw error
+      return { total_customers: count ?? 0 }
+    }, 'getKPIs'),
+  ['kpis'],
+  { revalidate: 60, tags: ['kpis'] }
+)
 
-// All campaigns for filter dropdown — uses RPC to cross schema boundary
-export async function getCampaigns() {
-  return withRetry(async () => {
-    const { data, error } = await supabase.rpc('get_campaigns')
-    if (error) throw error
-    return (data ?? []) as { id: number; name: string; legacy_code: string }[]
-  }, 'getCampaigns')
-}
+// All campaigns for filter dropdown.
+// Cached: 5 min — campaign list is very stable.
+export const getCampaigns = unstable_cache(
+  () =>
+    withRetry(async () => {
+      const { data, error } = await supabase.rpc('get_campaigns')
+      if (error) throw error
+      return (data ?? []) as { id: number; name: string; legacy_code: string }[]
+    }, 'getCampaigns'),
+  ['campaigns'],
+  { revalidate: 300, tags: ['campaigns'] }
+)
 
-// Per-campaign stats for dashboard
-export async function getCampaignStats() {
-  return withRetry(async () => {
-    const { data, error } = await supabase.rpc('get_campaign_stats')
-    if (error) throw error
-    return (data ?? []) as { campaign_id: number; campaign_name: string; total_customers: number; total_spend: number; total_orders: number }[]
-  }, 'getCampaignStats')
-}
+// Per-campaign stats for dashboard.
+// Cached: 60s — aggregated stats over Backerkit/Shopify/ISOD don't churn fast.
+export const getCampaignStats = unstable_cache(
+  () =>
+    withRetry(async () => {
+      const { data, error } = await supabase.rpc('get_campaign_stats')
+      if (error) throw error
+      return (data ?? []) as { campaign_id: number; campaign_name: string; total_customers: number; total_spend: number; total_orders: number }[]
+    }, 'getCampaignStats'),
+  ['campaign-stats'],
+  { revalidate: 60, tags: ['campaign-stats'] }
+)
 
 type CustomerRow = {
   id: number
@@ -161,14 +174,18 @@ export async function getCampaignCreditNames(campaignId: number) {
   }, 'getCampaignCreditNames')
 }
 
-// Units sold per product/variant for a campaign
-export async function getCampaignUnitsSold(campaignId: number) {
-  return withRetry(async () => {
-    const { data, error } = await supabase.rpc('get_campaign_units_sold', { p_campaign_id: campaignId })
-    if (error) throw error
-    return (data ?? []) as { product_name: string; variant_name: string | null; total_quantity: number }[]
-  }, 'getCampaignUnitsSold')
-}
+// Units sold per product/variant for a campaign.
+// Cached: 60s, keyed per-campaign — products in a campaign change slowly.
+export const getCampaignUnitsSold = unstable_cache(
+  (campaignId: number) =>
+    withRetry(async () => {
+      const { data, error } = await supabase.rpc('get_campaign_units_sold', { p_campaign_id: campaignId })
+      if (error) throw error
+      return (data ?? []) as { product_name: string; variant_name: string | null; total_quantity: number }[]
+    }, 'getCampaignUnitsSold'),
+  ['campaign-units-sold'],
+  { revalidate: 60, tags: ['campaign-units-sold'] }
+)
 
 // Single customer detail — uses RPC so total_spend reflects actual Shopify line items, not Backerkit
 export async function getCustomerByEmail(email: string) {
