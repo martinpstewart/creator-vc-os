@@ -129,10 +129,10 @@ export default function QueryConsole() {
           rows={3}
           className="w-full bg-transparent text-white text-sm placeholder-zinc-600 focus:outline-none resize-none"
         />
-        <div className="flex items-center justify-between mt-3 pt-3 border-t border-zinc-800">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mt-3 pt-3 border-t border-zinc-800">
           <button
             onClick={() => setBrowserOpen(true)}
-            className="text-xs text-zinc-400 hover:text-white transition-colors"
+            className="text-xs text-zinc-400 hover:text-white transition-colors text-left"
           >
             Browse templates →
           </button>
@@ -141,7 +141,7 @@ export default function QueryConsole() {
             <button
               onClick={() => submit(question)}
               disabled={running || !question.trim()}
-              className="px-4 py-1.5 text-sm font-bold rounded-md bg-[#3B9EE8] text-white disabled:opacity-40 disabled:cursor-not-allowed hover:bg-[#2d8ed8] transition-colors"
+              className="w-full sm:w-auto px-5 py-2.5 sm:py-1.5 text-sm font-bold rounded-md bg-[#3B9EE8] text-white disabled:opacity-40 disabled:cursor-not-allowed hover:bg-[#2d8ed8] transition-colors"
             >
               {running ? 'Running…' : 'Run'}
             </button>
@@ -158,8 +158,8 @@ export default function QueryConsole() {
       {/* Results */}
       {result && (
         <div className="space-y-3">
-          <div className="flex items-center justify-between gap-3 flex-wrap">
-            <div className="flex items-center gap-3 flex-wrap">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+            <div className="flex items-center gap-2 flex-wrap">
               <span
                 className={`px-2.5 py-1 rounded-md text-xs font-bold ${
                   result.query_type === 'template'
@@ -177,17 +177,17 @@ export default function QueryConsole() {
                 {' · '}{result.duration_ms} ms
               </span>
             </div>
-            <div className="flex items-center gap-2">
+            <div className="grid grid-cols-3 sm:flex sm:items-center gap-2">
               <button
                 onClick={() => setShowSql((v) => !v)}
-                className="px-3 py-1.5 text-xs rounded-md bg-zinc-800 hover:bg-zinc-700 text-zinc-200 transition-colors"
+                className="px-3 py-2 text-xs rounded-md bg-zinc-800 hover:bg-zinc-700 text-zinc-200 transition-colors"
               >
                 {showSql ? 'Hide SQL' : 'Show SQL'}
               </button>
               <button
                 onClick={exportCsv}
                 disabled={exporting}
-                className="px-3 py-1.5 text-xs rounded-md bg-zinc-800 hover:bg-zinc-700 text-zinc-200 disabled:opacity-50 transition-colors"
+                className="px-3 py-2 text-xs rounded-md bg-zinc-800 hover:bg-zinc-700 text-zinc-200 disabled:opacity-50 transition-colors"
               >
                 {exporting ? 'Exporting…' : 'Export CSV'}
               </button>
@@ -195,9 +195,9 @@ export default function QueryConsole() {
                 onClick={emailRecipients}
                 disabled={!hasEmailCol}
                 title={hasEmailCol ? 'Hand off email list to mail flow' : 'Results need an email column'}
-                className="px-3 py-1.5 text-xs rounded-md bg-zinc-800 hover:bg-zinc-700 text-zinc-200 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                className="px-3 py-2 text-xs rounded-md bg-zinc-800 hover:bg-zinc-700 text-zinc-200 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
               >
-                Email recipients
+                Email
               </button>
             </div>
           </div>

@@ -65,7 +65,7 @@ export default function DashboardTabs({
 
       {/* Customers tab */}
       {tab === 'customers' && (
-        <table className="w-full text-sm">
+        <div className="overflow-x-auto"><table className="w-full text-sm min-w-[640px]">
           <thead>
             <tr className="border-b border-zinc-800">
               <th className="text-left px-6 py-3 text-xs font-medium text-zinc-500">Customer</th>
@@ -100,12 +100,12 @@ export default function DashboardTabs({
               </ClickableRow>
             ))}
           </tbody>
-        </table>
+        </table></div>
       )}
 
       {/* Campaigns tab */}
       {tab === 'campaigns' && (
-        <table className="w-full text-sm">
+        <div className="overflow-x-auto"><table className="w-full text-sm min-w-[640px]">
           <thead>
             <tr className="border-b border-zinc-800">
               <th className="text-left px-6 py-3 text-xs font-medium text-zinc-500">Campaign</th>
@@ -138,7 +138,7 @@ export default function DashboardTabs({
               </ClickableRow>
             ))}
           </tbody>
-        </table>
+        </table></div>
       )}
     </div>
   )

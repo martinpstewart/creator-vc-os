@@ -57,23 +57,23 @@ export default function CampaignFilter({
       : `${selected.length} campaigns`
 
   return (
-    <div ref={ref} className="relative">
+    <div ref={ref} className="relative w-full sm:w-auto">
       <button
         onClick={() => setOpen(o => !o)}
-        className={`flex items-center gap-2 px-4 py-2 rounded-lg border text-sm transition-colors ${
+        className={`w-full sm:w-auto flex items-center justify-between sm:justify-start gap-2 px-4 py-2 rounded-lg border text-sm transition-colors ${
           selected.length > 0
             ? 'bg-zinc-800 border-zinc-600 text-white'
             : 'bg-zinc-900 border-zinc-700 text-zinc-400 hover:text-white hover:border-zinc-600'
         }`}
       >
-        <span>{label}</span>
+        <span className="truncate">{label}</span>
         <svg className={`w-3.5 h-3.5 transition-transform ${open ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
           <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
         </svg>
       </button>
 
       {open && (
-        <div className="absolute left-0 top-full mt-1.5 z-10 w-64 bg-zinc-900 border border-zinc-700 rounded-xl shadow-xl overflow-hidden">
+        <div className="absolute left-0 right-0 sm:right-auto top-full mt-1.5 z-10 sm:w-64 bg-zinc-900 border border-zinc-700 rounded-xl shadow-xl overflow-hidden">
           <div className="p-2 space-y-0.5">
             {campaigns.map(c => {
               const checked = selected.includes(c.id)

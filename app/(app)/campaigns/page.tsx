@@ -19,16 +19,16 @@ export default async function CampaignsPage() {
   const totalBackers = campaigns.reduce((s, c) => s + Number(c.total_customers), 0)
 
   return (
-    <div className="p-8">
-      <div className="mb-8">
-        <h1 className="text-2xl font-semibold text-white">Campaigns</h1>
+    <div className="p-4 md:p-8">
+      <div className="mb-6 md:mb-8">
+        <h1 className="text-xl md:text-2xl font-semibold text-white">Campaigns</h1>
         <p className="text-sm text-zinc-500 mt-1">
           {campaigns.length} campaigns · {fmt(totalBackers)} total backers · {fmt(totalRevenue, true)} total revenue
         </p>
       </div>
 
-      <div className="bg-zinc-900 border border-zinc-800 rounded-xl overflow-hidden">
-        <table className="w-full text-sm">
+      <div className="bg-zinc-900 border border-zinc-800 rounded-xl overflow-x-auto">
+        <table className="w-full text-sm min-w-[600px]">
           <thead>
             <tr className="border-b border-zinc-800">
               <th className="text-left px-6 py-3 text-xs font-medium text-zinc-500">Campaign</th>

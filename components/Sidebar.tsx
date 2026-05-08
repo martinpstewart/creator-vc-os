@@ -13,19 +13,20 @@ const nav = [
   { href: '/query', label: 'Ask', Icon: Sparkles },
 ]
 
-export default function Sidebar() {
+export default function Sidebar({ onNavigate }: { onNavigate?: () => void } = {}) {
   const pathname = usePathname()
   const router = useRouter()
 
   async function handleSignOut() {
     const supabase = createClient()
     await supabase.auth.signOut()
+    onNavigate?.()
     router.push('/login')
     router.refresh()
   }
 
   return (
-    <aside className="w-56 shrink-0 bg-zinc-900 border-r border-zinc-800 flex flex-col">
+    <aside className="w-56 h-full shrink-0 bg-zinc-900 border-r border-zinc-800 flex flex-col">
       <div className="px-5 py-5 border-b border-zinc-800">
         <Logo size="md" />
       </div>
@@ -36,7 +37,8 @@ export default function Sidebar() {
             <Link
               key={href}
               href={href}
-              className={`flex items-center gap-2.5 px-3 py-2 rounded-md text-sm transition-colors ${
+              onClick={onNavigate}
+              className={`flex items-center gap-2.5 px-3 py-2.5 rounded-md text-sm transition-colors ${
                 active
                   ? 'bg-zinc-800 text-white font-medium'
                   : 'text-zinc-400 hover:text-white hover:bg-zinc-800/50'
@@ -51,7 +53,7 @@ export default function Sidebar() {
       <div className="px-3 py-4 border-t border-zinc-800">
         <button
           onClick={handleSignOut}
-          className="w-full flex items-center gap-2.5 px-3 py-2 rounded-md text-sm text-zinc-400 hover:text-white hover:bg-zinc-800/50 transition-colors"
+          className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-md text-sm text-zinc-400 hover:text-white hover:bg-zinc-800/50 transition-colors"
         >
           <LogOut size={15} strokeWidth={1.75} />
           Sign out

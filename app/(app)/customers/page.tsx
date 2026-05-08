@@ -33,13 +33,13 @@ export default async function CustomersPage({
   const totalPages = Math.ceil(total / 50)
 
   return (
-    <div className="p-8">
-      <div className="flex items-center justify-between mb-6">
+    <div className="p-4 md:p-8">
+      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 mb-6">
         <div>
-          <h1 className="text-2xl font-semibold text-white">Customers</h1>
+          <h1 className="text-xl md:text-2xl font-semibold text-white">Customers</h1>
           <p className="text-sm text-zinc-500 mt-1">{fmt(total)} total</p>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 sm:gap-3">
           <Suspense>
             <CampaignFilter campaigns={campaigns} selected={selectedIds} />
           </Suspense>
@@ -49,8 +49,8 @@ export default async function CustomersPage({
         </div>
       </div>
 
-      <div className="bg-zinc-900 border border-zinc-800 rounded-xl">
-        <table className="w-full text-sm">
+      <div className="bg-zinc-900 border border-zinc-800 rounded-xl overflow-x-auto">
+        <table className="w-full text-sm min-w-[700px]">
           <thead>
             <tr className="border-b border-zinc-800">
               <th className="text-left px-6 py-3 text-xs font-medium text-zinc-500">Customer</th>

@@ -46,8 +46,8 @@ export default async function CustomerDetailPage({
     : undefined
 
   return (
-    <div className="p-8">
-      <div className="mb-6">
+    <div className="p-4 md:p-8">
+      <div className="mb-4 md:mb-6">
         {fromCampaign ? (
           <Link
             href={`/campaigns/${fromCampaignId}`}
@@ -62,22 +62,22 @@ export default async function CustomerDetailPage({
         )}
       </div>
 
-      <div className="mb-8">
-        <h1 className="text-2xl font-semibold text-white">{customer.full_name || email}</h1>
-        <p className="text-sm text-zinc-500 mt-1">{email}{customer.phone ? ` · ${customer.phone}` : ''}</p>
+      <div className="mb-6 md:mb-8">
+        <h1 className="text-xl md:text-2xl font-semibold text-white break-words">{customer.full_name || email}</h1>
+        <p className="text-xs md:text-sm text-zinc-500 mt-1 break-all">{email}{customer.phone ? ` · ${customer.phone}` : ''}</p>
       </div>
 
       {/* KPI cards */}
-      <div className="grid grid-cols-3 gap-4 mb-8">
-        <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-5">
-          <p className="text-xs text-zinc-500 uppercase tracking-wide font-medium">Total Spent</p>
-          <p className="text-2xl font-semibold text-white mt-2">{fmt(customer.total_spend, true)}</p>
-          <p className="text-xs text-zinc-600 mt-1">{customer.total_line_items} line items · {customer.total_quantity_purchased} units</p>
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 md:gap-4 mb-6 md:mb-8">
+        <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-4 md:p-5">
+          <p className="text-[11px] md:text-xs text-zinc-500 uppercase tracking-wide font-medium">Total Spent</p>
+          <p className="text-xl md:text-2xl font-semibold text-white mt-2">{fmt(customer.total_spend, true)}</p>
+          <p className="text-[10px] md:text-xs text-zinc-600 mt-1">{customer.total_line_items} line items · {customer.total_quantity_purchased} units</p>
         </div>
-        <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-5">
-          <p className="text-xs text-zinc-500 uppercase tracking-wide font-medium">Orders</p>
-          <p className="text-2xl font-semibold text-white mt-2">{customer.total_orders}</p>
-          <p className="text-xs text-zinc-600 mt-1">
+        <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-4 md:p-5">
+          <p className="text-[11px] md:text-xs text-zinc-500 uppercase tracking-wide font-medium">Orders</p>
+          <p className="text-xl md:text-2xl font-semibold text-white mt-2">{customer.total_orders}</p>
+          <p className="text-[10px] md:text-xs text-zinc-600 mt-1">
             {[
               customer.has_campaign_orders && 'campaign',
               customer.has_raw_orders && 'direct',
@@ -85,8 +85,8 @@ export default async function CustomerDetailPage({
             ].filter(Boolean).join(' · ') || 'no orders'}
           </p>
         </div>
-        <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-5">
-          <p className="text-xs text-zinc-500 uppercase tracking-wide font-medium">Shipping Address</p>
+        <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-4 md:p-5">
+          <p className="text-[11px] md:text-xs text-zinc-500 uppercase tracking-wide font-medium">Shipping Address</p>
           {addressLines.length > 0 ? (
             <div className="mt-2 space-y-0.5">
               {addressLines.map((line, i) => (

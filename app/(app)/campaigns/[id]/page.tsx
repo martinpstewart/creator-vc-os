@@ -52,40 +52,40 @@ export default async function CampaignDetailPage({
   const distinctProducts = new Set(unitsSold.map(u => u.product_name)).size
 
   return (
-    <div className="p-8">
-      <div className="mb-6">
+    <div className="p-4 md:p-8">
+      <div className="mb-4 md:mb-6">
         <Link href="/campaigns" className="text-xs text-zinc-500 hover:text-white transition-colors">
           ← Campaigns
         </Link>
       </div>
 
-      <div className="mb-8">
-        <h1 className="text-2xl font-semibold text-white">{campaign.campaign_name}</h1>
+      <div className="mb-6 md:mb-8">
+        <h1 className="text-xl md:text-2xl font-semibold text-white">{campaign.campaign_name}</h1>
         <p className="text-sm text-zinc-500 mt-1">{fmt(campaign.total_orders)} orders</p>
       </div>
 
       {/* KPI cards */}
-      <div className="grid grid-cols-4 gap-4 mb-8">
-        <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-5">
-          <p className="text-xs text-zinc-500 uppercase tracking-wide font-medium">Total Revenue</p>
-          <p className="text-2xl font-semibold text-white mt-2">{fmt(campaign.total_spend, true)}</p>
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-4 mb-6 md:mb-8">
+        <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-4 md:p-5">
+          <p className="text-[11px] md:text-xs text-zinc-500 uppercase tracking-wide font-medium">Total Revenue</p>
+          <p className="text-xl md:text-2xl font-semibold text-white mt-2">{fmt(campaign.total_spend, true)}</p>
         </div>
-        <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-5">
-          <p className="text-xs text-zinc-500 uppercase tracking-wide font-medium">Unique Backers</p>
-          <p className="text-2xl font-semibold text-white mt-2">{fmt(campaign.total_customers)}</p>
+        <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-4 md:p-5">
+          <p className="text-[11px] md:text-xs text-zinc-500 uppercase tracking-wide font-medium">Unique Backers</p>
+          <p className="text-xl md:text-2xl font-semibold text-white mt-2">{fmt(campaign.total_customers)}</p>
         </div>
-        <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-5">
-          <p className="text-xs text-zinc-500 uppercase tracking-wide font-medium">Avg per Backer</p>
-          <p className="text-2xl font-semibold text-white mt-2">{fmt(avgSpend, true)}</p>
+        <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-4 md:p-5">
+          <p className="text-[11px] md:text-xs text-zinc-500 uppercase tracking-wide font-medium">Avg per Backer</p>
+          <p className="text-xl md:text-2xl font-semibold text-white mt-2">{fmt(avgSpend, true)}</p>
         </div>
-        <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-5">
-          <p className="text-xs text-zinc-500 uppercase tracking-wide font-medium">Units Sold</p>
-          <p className="text-2xl font-semibold text-white mt-2">{fmt(totalUnits)}</p>
+        <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-4 md:p-5">
+          <p className="text-[11px] md:text-xs text-zinc-500 uppercase tracking-wide font-medium">Units Sold</p>
+          <p className="text-xl md:text-2xl font-semibold text-white mt-2">{fmt(totalUnits)}</p>
         </div>
       </div>
 
       {/* Export buttons */}
-      <div className="mb-8">
+      <div className="mb-6 md:mb-8">
         <p className="text-xs text-zinc-500 uppercase tracking-wide font-medium mb-3">Export</p>
         <CampaignExports campaignId={campaignId} campaignName={campaign.campaign_name} />
       </div>
