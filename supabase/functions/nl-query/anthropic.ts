@@ -74,12 +74,14 @@ async function callAnthropic(args: {
   return text.trim()
 }
 
-// Strip ```sql fences, leading/trailing prose. The generator has
-// instructions to omit them, but Claude occasionally adds them back.
+// Strip code fences with any (or no) language label. The matcher
+// returns JSON, the generator returns SQL — Claude occasionally
+// wraps either in ```json / ```sql / ```postgresql / bare ``` fences
+// despite instructions to skip them.
 function stripCodeFences(s: string): string {
   let t = s.trim()
-  t = t.replace(/^```(?:sql|postgresql)?\s*/i, '')
-  t = t.replace(/\s*```\s*$/i, '')
+  t = t.replace(/^```[a-zA-Z0-9_-]*\s*\n?/i, '')
+  t = t.replace(/\n?\s*```\s*$/i, '')
   return t.trim()
 }
 
