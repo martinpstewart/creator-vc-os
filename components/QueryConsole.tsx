@@ -50,8 +50,9 @@ export default function QueryConsole() {
       if (!res.ok) throw new Error(json.error ?? `HTTP ${res.status}`)
       const r = json as QueryResponse
       setResult(r)
-      // Auto-expand SQL panel for AI-generated results.
-      setShowSql(r.query_type === 'generated')
+      // Always collapse SQL — most users only want results + CSV.
+      // The query-type pill still labels AI-generated runs.
+      setShowSql(false)
       setRecentRefresh((n) => n + 1)
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e))
