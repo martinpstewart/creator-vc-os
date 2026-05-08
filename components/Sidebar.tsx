@@ -4,12 +4,13 @@ import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase-browser'
 import Logo from '@/components/Logo'
-import { Eye, Users, Clapperboard, LogOut } from 'lucide-react'
+import { Eye, Users, Clapperboard, LogOut, Sparkles } from 'lucide-react'
 
 const nav = [
   { href: '/', label: 'Dashboard', Icon: Eye },
   { href: '/customers', label: 'Customers', Icon: Users },
   { href: '/campaigns', label: 'Campaigns', Icon: Clapperboard },
+  { href: '/query', label: 'Ask', Icon: Sparkles },
 ]
 
 export default function Sidebar() {
