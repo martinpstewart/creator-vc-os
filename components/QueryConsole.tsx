@@ -1,6 +1,7 @@
 'use client'
 
 import { useCallback, useState } from 'react'
+import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase-browser'
 import QueryResultsTable from './QueryResultsTable'
 import TemplateBrowser from './TemplateBrowser'
@@ -18,8 +19,10 @@ type QueryResponse = {
 }
 
 const FUNCTION_URL = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/nl-query`
+const RECIPIENTS_STORAGE_KEY = 'creatorvc.email.recipients'
 
 export default function QueryConsole() {
+  const router = useRouter()
   const [question, setQuestion] = useState('')
   const [running, setRunning] = useState(false)
   const [exporting, setExporting] = useState(false)
@@ -102,12 +105,28 @@ export default function QueryConsole() {
 
   function emailRecipients() {
     if (!result) return
-    const emails = result.rows.map((r) => r.email).filter((e): e is string => typeof e === 'string')
-    // TODO: Wire to SES/Unlayer email feature when it ships. For now,
-    //       hand off the recipient list — replace with router.push to
-    //       the compose flow once that route exists.
-    console.log('[email handoff]', emails.length, 'recipients', emails)
-    alert(`Email feature not wired yet. ${emails.length} recipients ready to hand off.\n\nFirst few:\n${emails.slice(0, 5).join('\n')}`)
+    const emails = result.rows
+      .map((r) => r.email)
+      .filter((e): e is string => typeof e === 'string' && e.length > 0)
+    if (emails.length === 0) return
+
+    // Stash the recipient list in sessionStorage (tab-scoped, no DB
+    // persistence — emails change frequently and full lists shouldn't
+    // outlive the user's session). The new-template page picks them up.
+    try {
+      sessionStorage.setItem(
+        RECIPIENTS_STORAGE_KEY,
+        JSON.stringify({
+          question,
+          emails,
+          capturedAt: new Date().toISOString(),
+        }),
+      )
+    } catch {
+      // Quota exceeded or sessionStorage unavailable — fall through and
+      // navigate anyway; the email page will just show an empty chip.
+    }
+    router.push('/email/new?from=query')
   }
 
   const handleKey: React.KeyboardEventHandler<HTMLTextAreaElement> = (e) => {

@@ -2,13 +2,14 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { Eye, Users, Clapperboard, Sparkles } from 'lucide-react'
+import { Eye, Users, Clapperboard, Sparkles, Mail } from 'lucide-react'
 
 const items = [
   { href: '/', label: 'Home', Icon: Eye },
-  { href: '/customers', label: 'Customers', Icon: Users },
+  { href: '/customers', label: 'People', Icon: Users },
   { href: '/campaigns', label: 'Campaigns', Icon: Clapperboard },
   { href: '/query', label: 'Ask', Icon: Sparkles },
+  { href: '/email', label: 'Email', Icon: Mail },
 ]
 
 export default function BottomNav() {
