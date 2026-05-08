@@ -12,7 +12,19 @@ Showcase what's possible for agency clients.
 
 ## Supabase Config
 - Project URL: https://xwokhafcllstcnlcberv.supabase.co
-- Anon Key: sb_secret_LhjBq6AM_G6nKmMZPBOSOA_W9TWcMoW
+- Keys live in `.env.local` (and Vercel project env). Use the
+  `sb_publishable_*` key as `NEXT_PUBLIC_SUPABASE_ANON_KEY`. Never
+  commit secret/service-role keys.
+
+## Security
+- RLS is enabled on `aa_01_campaigns.campaign_orders`,
+  `aa_01_campaigns.campaign_order_lines`, and
+  `aa_02_crm.customer_campaign_orders`. Authenticated users have
+  SELECT; anon is denied.
+- All data-layer reads go through `SECURITY DEFINER` RPCs in the
+  `public` schema, so RLS doesn't gate them — but this means RPC
+  surface area is the trust boundary. Don't add new RPCs without
+  thinking about who can call them.
 
 ## Conventions
 - Use Supabase JS client for all data operations
