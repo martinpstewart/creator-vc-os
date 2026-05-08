@@ -1,8 +1,11 @@
+import { Suspense } from 'react'
 import { getCampaignStats, getCampaignBackerList, getCampaignUnitsSold } from '@/lib/supabase'
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import CampaignExports from '@/components/CampaignExports'
 import CampaignDetailTabs from '@/components/CampaignDetailTabs'
+import CampaignBackers from '@/components/CampaignBackers'
+import { SkeletonRows } from '@/components/Skeleton'
 
 export const dynamic = 'force-dynamic'
 
@@ -14,6 +17,14 @@ function fmt(n: number | string | null, currency = false) {
   return new Intl.NumberFormat('en-US').format(num)
 }
 
+// Streamed inside the page via Suspense — initial 100 backers fetch is the
+// slowest call on this route (no PostgREST cache), so we let the rest of
+// the page paint first.
+async function BackersSlot({ campaignId }: { campaignId: number }) {
+  const { backers, total } = await getCampaignBackerList(campaignId, 1, 100)
+  return <CampaignBackers campaignId={campaignId} initialBackers={backers} initialTotal={total} />
+}
+
 export default async function CampaignDetailPage({
   params,
 }: {
@@ -23,9 +34,9 @@ export default async function CampaignDetailPage({
   const campaignId = parseInt(id, 10)
   if (isNaN(campaignId)) notFound()
 
-  const [allStats, { backers: initialBackers, total: totalBackers }, unitsSold] = await Promise.all([
+  // Both of these are cached in the data layer — page shell paints fast.
+  const [allStats, unitsSold] = await Promise.all([
     getCampaignStats(),
-    getCampaignBackerList(campaignId, 1, 100),
     getCampaignUnitsSold(campaignId),
   ])
 
@@ -79,13 +90,16 @@ export default async function CampaignDetailPage({
         <CampaignExports campaignId={campaignId} campaignName={campaign.campaign_name} />
       </div>
 
-      {/* Tabbed Products / Backers */}
+      {/* Tabbed Products / Backers — backers stream in independently */}
       <CampaignDetailTabs
-        campaignId={campaignId}
         unitsSold={unitsSold}
         productCount={distinctProducts}
-        initialBackers={initialBackers}
-        totalBackers={totalBackers}
+        backerCount={campaign.total_customers}
+        backersSlot={
+          <Suspense fallback={<SkeletonRows rows={6} />}>
+            <BackersSlot campaignId={campaignId} />
+          </Suspense>
+        }
       />
     </div>
   )

@@ -1,20 +1,11 @@
 'use client'
 
-import { useState } from 'react'
-import CampaignBackers from './CampaignBackers'
+import { useState, type ReactNode } from 'react'
 
 type UnitsSoldRow = {
   product_name: string
   variant_name: string | null
   total_quantity: number | string
-}
-
-type BackerRow = {
-  email: string
-  full_name: string | null
-  total_spend: number | null
-  order_count: number
-  total_count: number
 }
 
 function fmt(n: number | string | null) {
@@ -27,17 +18,15 @@ function fmt(n: number | string | null) {
 type Tab = 'products' | 'backers'
 
 export default function CampaignDetailTabs({
-  campaignId,
   unitsSold,
   productCount,
-  initialBackers,
-  totalBackers,
+  backerCount,
+  backersSlot,
 }: {
-  campaignId: number
   unitsSold: UnitsSoldRow[]
   productCount: number
-  initialBackers: BackerRow[]
-  totalBackers: number
+  backerCount: number
+  backersSlot: ReactNode
 }) {
   const [tab, setTab] = useState<Tab>('products')
 
@@ -55,7 +44,7 @@ export default function CampaignDetailTabs({
           active={tab === 'backers'}
           onClick={() => setTab('backers')}
           label="Backers"
-          count={totalBackers}
+          count={backerCount}
         />
       </div>
 
@@ -64,13 +53,8 @@ export default function CampaignDetailTabs({
         {tab === 'products' && <ProductsPanel unitsSold={unitsSold} />}
       </div>
       <div role="tabpanel" hidden={tab !== 'backers'}>
-        {tab === 'backers' && (
-          <CampaignBackers
-            campaignId={campaignId}
-            initialBackers={initialBackers}
-            initialTotal={totalBackers}
-          />
-        )}
+        {/* Server-rendered Suspense slot — streams in independently */}
+        {backersSlot}
       </div>
     </div>
   )
