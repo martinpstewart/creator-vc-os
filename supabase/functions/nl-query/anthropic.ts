@@ -24,11 +24,11 @@ Schemas (always prefix; never use bare table names):
   - customer_raw_orders, customer_isod_orders, customer_campaign_orders (junction tables)
   - customer_summary (view, joins everything; has all_campaigns jsonb)
 
-Campaign registry (id → "Name"):
-  1 The Thing Expanded
-  2 In Search of Darkness 1995  (legacy_code TTE_ISOD or similar)
-  3 FPS: First Person Shooter
-  4 Aliens Expanded 40th Anniversary
+Campaign registry (id → "Name", legacy_code):
+  1 The Thing Expanded               TT_EXPANDED
+  2 In Search of Darkness 1995       ISOD_95
+  3 FPS: First Person Shooter        FPS_DOC
+  4 Aliens Expanded 40th Anniversary ALIENS_EXPANDED
 
 Notes for queries:
 - "paid" means raw_orders.financial_status = 'paid'.
