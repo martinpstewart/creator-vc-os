@@ -3,6 +3,7 @@ import Link from 'next/link'
 import { Suspense } from 'react'
 import CampaignFilter from '@/components/CampaignFilter'
 import CustomerSearch from '@/components/CustomerSearch'
+import ClickableRow from '@/components/ClickableRow'
 
 function fmt(n: number | string | null, currency = false) {
   if (n === null || n === undefined) return '—'
@@ -69,7 +70,11 @@ export default async function CustomersPage({
               const customerCampaigns = [...new Map(all.map(x => [x.campaign_id, x])).values()]
 
               return (
-                <tr key={c.email} className="border-b border-zinc-800/50 hover:bg-zinc-800/30 transition-colors">
+                <ClickableRow
+                  key={c.email}
+                  href={`/customers/${encodeURIComponent(c.email)}`}
+                  className="border-b border-zinc-800/50 hover:bg-zinc-800/30 transition-colors"
+                >
                   <td className="px-6 py-3.5">
                     <Link href={`/customers/${encodeURIComponent(c.email)}`} className="block">
                       <p className="font-medium text-white">{c.full_name || '—'}</p>
@@ -100,7 +105,7 @@ export default async function CustomersPage({
                   </td>
                   <td className="px-6 py-3.5 text-right text-zinc-300">{c.total_orders}</td>
                   <td className="px-6 py-3.5 text-right font-medium text-white">{fmt(c.total_spend, true)}</td>
-                </tr>
+                </ClickableRow>
               )
             })}
           </tbody>

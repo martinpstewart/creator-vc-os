@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import Link from 'next/link'
+import ClickableRow from './ClickableRow'
 
 function fmt(n: number | string | null, currency = false) {
   if (n === null || n === undefined) return '—'
@@ -76,7 +77,11 @@ export default function DashboardTabs({
           </thead>
           <tbody>
             {customers.map((c) => (
-              <tr key={c.email} className="border-b border-zinc-800/50 hover:bg-zinc-800/30 transition-colors">
+              <ClickableRow
+                key={c.email}
+                href={`/customers/${encodeURIComponent(c.email)}`}
+                className="border-b border-zinc-800/50 hover:bg-zinc-800/30 transition-colors"
+              >
                 <td className="px-6 py-3.5">
                   <Link href={`/customers/${encodeURIComponent(c.email)}`} className="font-medium text-white hover:text-zinc-300">
                     {c.full_name || '—'}
@@ -92,7 +97,7 @@ export default function DashboardTabs({
                     {c.is_backer ? 'Backer' : 'Pending'}
                   </span>
                 </td>
-              </tr>
+              </ClickableRow>
             ))}
           </tbody>
         </table>
@@ -112,7 +117,11 @@ export default function DashboardTabs({
           </thead>
           <tbody>
             {campaignStats.map((c) => (
-              <tr key={c.campaign_id} className="border-b border-zinc-800/50 hover:bg-zinc-800/30 transition-colors">
+              <ClickableRow
+                key={c.campaign_id}
+                href={`/campaigns/${c.campaign_id}`}
+                className="border-b border-zinc-800/50 hover:bg-zinc-800/30 transition-colors"
+              >
                 <td className="px-6 py-4 font-medium text-white">
                   <Link href={`/campaigns/${c.campaign_id}`} className="hover:text-zinc-300 transition-colors">
                     {c.campaign_name}
@@ -126,7 +135,7 @@ export default function DashboardTabs({
                     ? fmt(c.total_spend / c.total_customers, true)
                     : '—'}
                 </td>
-              </tr>
+              </ClickableRow>
             ))}
           </tbody>
         </table>

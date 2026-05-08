@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase-browser'
+import ClickableRow from './ClickableRow'
 
 type BackerRow = {
   email: string
@@ -95,7 +96,11 @@ export default function CampaignBackers({
             </thead>
             <tbody>
               {backers.map((b) => (
-                <tr key={b.email} className="border-b border-zinc-800/50 hover:bg-zinc-800/30 transition-colors">
+                <ClickableRow
+                  key={b.email}
+                  href={`/customers/${encodeURIComponent(b.email)}?campaign=${campaignId}`}
+                  className="border-b border-zinc-800/50 hover:bg-zinc-800/30 transition-colors"
+                >
                   <td className="px-6 py-3.5">
                     <Link
                       href={`/customers/${encodeURIComponent(b.email)}?campaign=${campaignId}`}
@@ -109,7 +114,7 @@ export default function CampaignBackers({
                   <td className="px-6 py-3.5 text-right font-medium text-white">
                     {b.total_spend !== null ? fmt(b.total_spend, true) : '—'}
                   </td>
-                </tr>
+                </ClickableRow>
               ))}
             </tbody>
           </table>

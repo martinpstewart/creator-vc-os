@@ -1,5 +1,6 @@
 import { getCampaignStats } from '@/lib/supabase'
 import Link from 'next/link'
+import ClickableRow from '@/components/ClickableRow'
 
 export const dynamic = 'force-dynamic'
 
@@ -39,7 +40,11 @@ export default async function CampaignsPage() {
           </thead>
           <tbody>
             {campaigns.map((c) => (
-              <tr key={c.campaign_id} className="border-b border-zinc-800/50 hover:bg-zinc-800/30 transition-colors">
+              <ClickableRow
+                key={c.campaign_id}
+                href={`/campaigns/${c.campaign_id}`}
+                className="border-b border-zinc-800/50 hover:bg-zinc-800/30 transition-colors"
+              >
                 <td className="px-6 py-4">
                   <Link
                     href={`/campaigns/${c.campaign_id}`}
@@ -56,7 +61,7 @@ export default async function CampaignsPage() {
                     ? fmt(c.total_spend / c.total_customers, true)
                     : '—'}
                 </td>
-              </tr>
+              </ClickableRow>
             ))}
           </tbody>
         </table>
