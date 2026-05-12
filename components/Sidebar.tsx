@@ -4,7 +4,7 @@ import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase-browser'
 import Logo from '@/components/Logo'
-import { Eye, Users, Clapperboard, LogOut, Sparkles, Mail } from 'lucide-react'
+import { Eye, Users, Clapperboard, LogOut, Sparkles, Mail, Package } from 'lucide-react'
 
 const nav = [
   { href: '/', label: 'Dashboard', Icon: Eye },
@@ -12,6 +12,7 @@ const nav = [
   { href: '/campaigns', label: 'Campaigns', Icon: Clapperboard },
   { href: '/query', label: 'Ask', Icon: Sparkles },
   { href: '/email', label: 'Email', Icon: Mail },
+  { href: '/catalogue', label: 'Catalogue', Icon: Package },
 ]
 
 export default function Sidebar({ onNavigate }: { onNavigate?: () => void } = {}) {
