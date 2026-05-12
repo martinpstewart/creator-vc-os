@@ -66,88 +66,68 @@ export const getCampaigns = unstable_cache(
 // Per-campaign stats for dashboard.
 //
 // Backed by aa_01_campaigns.v_raw_order_line_attribution per Martin's
-// 12-May patch — the view resolves variant_id → SKU → fuzzy so that
-// fragmented Shopify line-item titles collapse onto canonical products,
-// and exposes product_campaign_id (correct) separately from
-// order_campaign_id (the routing value). Filtering on product_campaign_id
-// fixes the Thing Expanded numbers (was undercounting units by ~50%).
+// 12-May patch — the view resolves variant_id → SKU → fuzzy and exposes
+// product_campaign_id (correct attribution) separately from
+// order_campaign_id (the routing value). Fixes Thing Expanded numbers
+// that were undercounting units by ~50% under the old raw_orders path.
 //
-// ISOD-only campaigns aren't in raw_orders, so we union the view with
-// an aggregate over isod_orders + isod_order_lines.
+// Strategy: keep the existing get_campaign_stats RPC for structure +
+// ISOD-correct numbers (it's SECURITY DEFINER so it bypasses the
+// campaigns / isod_orders RLS that locks out anon), then OVERRIDE the
+// totals for any campaign where the attribution view has data. ISOD-only
+// campaigns fall through to the RPC's numbers unchanged.
 //
-// Cached: 60s. ~25k raw rows pulled per refresh, aggregated client-side.
+// Cached: 60s.
+type CampaignStatRow = {
+  campaign_id: number
+  campaign_name: string
+  total_customers: number
+  total_spend: number
+  total_orders: number
+}
+
 export const getCampaignStats = unstable_cache(
   () =>
     withRetry(async () => {
-      const [viewRes, isodOrdersRes, campaignsRes] = await Promise.all([
+      const [rpcRes, viewRes] = await Promise.all([
+        supabase.rpc('get_campaign_stats'),
         supabase
           .schema('aa_01_campaigns')
           .from('v_raw_order_line_attribution')
-          .select('shopify_order_id, email, line_revenue, product_campaign_id, product_id')
+          .select('shopify_order_id, email, line_revenue, product_campaign_id')
           .eq('financial_status', 'paid')
-          .not('product_id', 'is', null)
           .range(0, 99999),
-        supabase
-          .schema('aa_01_campaigns')
-          .from('isod_orders')
-          .select('id, campaign_id, customer_email, isod_order_lines(price_paid)')
-          .range(0, 99999),
-        supabase
-          .schema('aa_01_campaigns')
-          .from('campaigns')
-          .select('id, "Name", legacy_code')
-          .order('id'),
       ])
+      if (rpcRes.error) throw rpcRes.error
       if (viewRes.error) throw viewRes.error
-      if (isodOrdersRes.error) throw isodOrdersRes.error
-      if (campaignsRes.error) throw campaignsRes.error
 
-      type Agg = { orders: Set<string | number>; backers: Set<string>; revenue: number }
-      const make = (): Agg => ({ orders: new Set(), backers: new Set(), revenue: 0 })
-      const byCampaign = new Map<number, Agg>()
-
-      // Shopify line items via the canonical attribution view. Case-sensitive
-      // email dedup to match the patch's smoke-test numbers.
+      type Agg = { orders: Set<string>; backers: Set<string>; revenue: number }
+      const viewAgg = new Map<number, Agg>()
       for (const row of viewRes.data ?? []) {
         const id = row.product_campaign_id as number | null
         if (id == null) continue
-        const m = byCampaign.get(id) ?? make()
+        const m = viewAgg.get(id) ?? { orders: new Set(), backers: new Set(), revenue: 0 }
         if (row.shopify_order_id) m.orders.add(row.shopify_order_id as string)
         if (row.email) m.backers.add(String(row.email))
         m.revenue += Number(row.line_revenue ?? 0)
-        byCampaign.set(id, m)
+        viewAgg.set(id, m)
       }
 
-      // ISOD legacy orders (campaign 2, etc.) — view doesn't cover these.
-      for (const row of (isodOrdersRes.data ?? []) as Array<{
-        id: number
-        campaign_id: number
-        customer_email: string | null
-        isod_order_lines: { price_paid: number | string | null }[] | null
-      }>) {
-        const id = row.campaign_id
-        if (id == null) continue
-        const m = byCampaign.get(id) ?? make()
-        m.orders.add(row.id)
-        if (row.customer_email) m.backers.add(row.customer_email)
-        for (const line of row.isod_order_lines ?? []) {
-          m.revenue += Number(line.price_paid ?? 0)
-        }
-        byCampaign.set(id, m)
-      }
-
-      return (campaignsRes.data ?? []).map((c) => {
-        const agg = byCampaign.get(c.id as number) ?? make()
+      // Override RPC numbers for campaigns the view covers (raw_orders).
+      // ISOD-only campaigns keep the RPC's already-correct ISOD aggregates.
+      return ((rpcRes.data ?? []) as CampaignStatRow[]).map((s) => {
+        const v = viewAgg.get(s.campaign_id)
+        if (!v || v.orders.size === 0) return s
         return {
-          campaign_id: c.id as number,
-          campaign_name: (c as Record<string, unknown>).Name as string,
-          total_customers: agg.backers.size,
-          total_spend: agg.revenue,
-          total_orders: agg.orders.size,
+          campaign_id: s.campaign_id,
+          campaign_name: s.campaign_name,
+          total_customers: v.backers.size,
+          total_spend: v.revenue,
+          total_orders: v.orders.size,
         }
       })
     }, 'getCampaignStats'),
-  ['campaign-stats-v2'],
+  ['campaign-stats-v3'],
   { revalidate: 60, tags: ['campaign-stats'] }
 )
 
@@ -203,14 +183,13 @@ export async function getCustomerCampaignOrders(email: string, campaignId: numbe
 
 export type BackerRow = { email: string; full_name: string | null; total_spend: number | null; order_count: number; total_count: number }
 
-// Cache the full deduped backer list per campaign once, then paginate
-// client-side. Per-campaign caching keeps memory bounded and is much
-// cheaper than paying the view roundtrip per page.
+// Backer list. Primary path uses the attribution view filtered by
+// product_campaign_id so a backer is "someone who bought a product
+// attributed to campaign X", not "someone whose order routed to X".
+// Pagination is client-side over a per-campaign cached full list.
 //
-// Uses product_campaign_id from v_raw_order_line_attribution so a backer
-// is "someone who bought a product attributed to campaign X", not
-// "someone whose order routed to X". ISOD-only campaigns fall back to
-// isod_orders.
+// ISOD-only campaigns fall through to the existing SECURITY DEFINER
+// RPC (anon can't read isod_orders directly under RLS).
 const _getCampaignBackerListFull = unstable_cache(
   (campaignId: number) =>
     withRetry(async () => {
@@ -225,7 +204,6 @@ const _getCampaignBackerListFull = unstable_cache(
         .range(0, 99999)
       if (error) throw error
 
-      // Case-sensitive email key to match the headline KPI count.
       type Row = { email: string; orders: Set<string>; spend: number }
       const byEmail = new Map<string, Row>()
       for (const r of viewRows ?? []) {
@@ -236,29 +214,21 @@ const _getCampaignBackerListFull = unstable_cache(
         byEmail.set(key, m)
       }
 
-      // ISOD-only campaign fallback.
+      // ISOD-only campaign — pull the whole list via the RPC, return as-is.
       if (byEmail.size === 0) {
-        const { data: isodRows, error: isodErr } = await supabase
-          .schema('aa_01_campaigns')
-          .from('isod_orders')
-          .select('id, customer_email, isod_order_lines(price_paid)')
-          .eq('campaign_id', campaignId)
-          .not('customer_email', 'is', null)
-          .range(0, 99999)
-        if (isodErr) throw isodErr
-        for (const r of (isodRows ?? []) as Array<{
-          id: number
-          customer_email: string
-          isod_order_lines: { price_paid: number | string | null }[] | null
-        }>) {
-          const key = r.customer_email
-          const m = byEmail.get(key) ?? { email: r.customer_email, orders: new Set(), spend: 0 }
-          m.orders.add(String(r.id))
-          for (const line of r.isod_order_lines ?? []) {
-            m.spend += Number(line.price_paid ?? 0)
-          }
-          byEmail.set(key, m)
-        }
+        // The RPC paginates; ask for a generous page size in one shot.
+        const { data: rpcRows, error: rpcErr } = await supabase.rpc(
+          'get_campaign_backer_list',
+          { p_campaign_id: campaignId, p_page: 1, p_page_size: 100000 },
+        )
+        if (rpcErr) throw rpcErr
+        const rows = (rpcRows ?? []) as BackerRow[]
+        return rows.map((b) => ({
+          email: b.email,
+          full_name: b.full_name,
+          order_count: b.order_count,
+          total_spend: b.total_spend,
+        }))
       }
 
       return Array.from(byEmail.values())
@@ -270,7 +240,7 @@ const _getCampaignBackerListFull = unstable_cache(
         }))
         .sort((a, b) => (b.total_spend ?? 0) - (a.total_spend ?? 0))
     }, 'getCampaignBackerListFull'),
-  ['campaign-backers-v2'],
+  ['campaign-backers-v3'],
   { revalidate: 60, tags: ['campaign-backers'] }
 )
 
@@ -317,13 +287,16 @@ export async function getCampaignCreditNames(campaignId: number) {
 
 // Units sold per product/variant for a campaign.
 //
-// Uses the canonical attribution view, grouped client-side. ISOD-only
-// campaigns fall back to isod_order_lines via the FK relationship.
+// Primary: canonical attribution view, grouped client-side. ISOD-only
+// campaigns (where the view returns no rows) fall through to the
+// existing SECURITY DEFINER RPC because anon can't read isod_order_lines
+// directly under RLS.
 // Cached: 60s, keyed per-campaign.
+type UnitsSoldRow = { product_name: string; variant_name: string | null; total_quantity: number }
+
 export const getCampaignUnitsSold = unstable_cache(
   (campaignId: number) =>
     withRetry(async () => {
-      // Primary: Shopify line items via the attribution view.
       const { data: viewRows, error } = await supabase
         .schema('aa_01_campaigns')
         .from('v_raw_order_line_attribution')
@@ -334,7 +307,7 @@ export const getCampaignUnitsSold = unstable_cache(
         .range(0, 99999)
       if (error) throw error
 
-      const grouped = new Map<string, { product_name: string; variant_name: string | null; total_quantity: number }>()
+      const grouped = new Map<string, UnitsSoldRow>()
       for (const r of viewRows ?? []) {
         const key = `${r.product_name ?? ''}||${r.variant_name ?? ''}`
         const m = grouped.get(key) ?? {
@@ -346,35 +319,18 @@ export const getCampaignUnitsSold = unstable_cache(
         grouped.set(key, m)
       }
 
-      // Fallback for ISOD-only campaigns (e.g. campaign 2): view is empty,
-      // pivot to isod_order_lines via the isod_orders FK.
+      // ISOD-only campaign fallback (e.g. campaign 2). The existing RPC
+      // is SECURITY DEFINER and aggregates from isod_order_lines.
       if (grouped.size === 0) {
-        const { data: isodLines, error: isodErr } = await supabase
-          .schema('aa_01_campaigns')
-          .from('isod_order_lines')
-          .select('line_title, line_variant_title, line_quantity, isod_orders!inner(campaign_id)')
-          .eq('isod_orders.campaign_id', campaignId)
-          .range(0, 99999)
-        if (isodErr) throw isodErr
-        for (const r of (isodLines ?? []) as Array<{
-          line_title: string | null
-          line_variant_title: string | null
-          line_quantity: string | null
-        }>) {
-          const key = `${r.line_title ?? ''}||${r.line_variant_title ?? ''}`
-          const m = grouped.get(key) ?? {
-            product_name: r.line_title ?? '',
-            variant_name: r.line_variant_title,
-            total_quantity: 0,
-          }
-          m.total_quantity += parseInt(r.line_quantity ?? '0', 10) || 0
-          grouped.set(key, m)
-        }
+        const { data: rpcRows, error: rpcErr } = await supabase
+          .rpc('get_campaign_units_sold', { p_campaign_id: campaignId })
+        if (rpcErr) throw rpcErr
+        return (rpcRows ?? []) as UnitsSoldRow[]
       }
 
       return Array.from(grouped.values()).sort((a, b) => b.total_quantity - a.total_quantity)
     }, 'getCampaignUnitsSold'),
-  ['campaign-units-sold-v2'],
+  ['campaign-units-sold-v3'],
   { revalidate: 60, tags: ['campaign-units-sold'] }
 )
 
