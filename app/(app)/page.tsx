@@ -127,10 +127,13 @@ async function DashboardBody() {
 
   return (
     <div className="space-y-6 md:space-y-8">
-      {/* Headline row — combined across Shopify + Gumroad */}
+      {/* Headline row — combined across every channel (Shopify + Gumroad
+          + Legacy Platforms + ISOD). The customer count comes from the
+          canonical aa_02_crm.v_paying_customer_emails view; revenue and
+          orders are the sum of the three channel columns below. */}
       <section>
         <p className="text-[11px] uppercase tracking-wider text-zinc-500 font-medium mb-2">
-          All-time · Shopify + Gumroad
+          All-time · All channels
         </p>
         <div className="grid grid-cols-2 lg:grid-cols-5 gap-3 md:gap-4">
           <HeadlineTile label="Customers"   value={fmtInt(data.combined.customers)} />

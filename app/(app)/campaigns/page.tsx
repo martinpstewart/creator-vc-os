@@ -2,6 +2,7 @@ import {
   getCampaigns,
   getCampaignStats,
   getCampaignsHistoricTotals,
+  getPayingCustomerCount,
 } from '@/lib/supabase'
 import { getCurrentRole } from '@/lib/auth-server'
 import Link from 'next/link'
@@ -32,11 +33,15 @@ export default async function CampaignsPage() {
   //
   // Role decides whether revenue columns appear at all — team/support
   // get backers + orders only.
-  const [allCampaigns, liveStats, historicTotals, role] = await Promise.all([
+  const [allCampaigns, liveStats, historicTotals, role, payingCustomers] = await Promise.all([
     getCampaigns(),
     getCampaignStats(),
     getCampaignsHistoricTotals(),
     getCurrentRole(),
+    // Canonical paying-customer count — used for the header total so
+    // it matches /home and /customers. Summing per-campaign rows would
+    // over-count cross-campaign buyers.
+    getPayingCustomerCount(),
   ])
   const showRevenue = role === 'admin'
 
@@ -71,7 +76,10 @@ export default async function CampaignsPage() {
   rows.sort((a, b) => b.revenue - a.revenue || a.campaign_name.localeCompare(b.campaign_name))
 
   const totalRevenue = rows.reduce((s, r) => s + r.revenue, 0)
-  const totalBackers = rows.reduce((s, r) => s + r.customers, 0)
+  // totalBackers comes from the canonical paying-customer view, NOT
+  // the sum of per-campaign rows below — those sum to a higher number
+  // because anyone who backs multiple campaigns is counted in each.
+  const totalBackers = payingCustomers
 
   return (
     <div className="p-4 md:p-8">
@@ -79,9 +87,12 @@ export default async function CampaignsPage() {
         <div>
           <h1 className="text-xl md:text-2xl font-semibold text-white">Campaigns</h1>
           <p className="text-sm text-zinc-500 mt-1">
-            {rows.length} campaigns · {fmt(totalBackers)} total backers
+            {rows.length} campaigns · {fmt(totalBackers)} unique backers
             {showRevenue && <> · {fmt(totalRevenue, true)} total revenue</>}
           </p>
+          {/* Cross-campaign buyers are counted in each campaign's row
+              below, so per-row backer counts can sum higher than the
+              unique total above. */}
         </div>
         <NewCampaignButton />
       </div>

@@ -21,10 +21,12 @@ const buildCampaignParams = (p: Record<string, unknown>) => [
   p.campaign_name ?? null,
 ]
 
-// 1. Paid backers for a campaign — deduped by lower(email).
+// 1. Paid backers for a SPECIFIC campaign — deduped by lower(email).
+// Scope is one campaign only; for "across all campaigns" questions
+// use paid_buyers_of_product instead.
 const paidBackersForCampaign: Template = {
   name: 'paid_backers_for_campaign',
-  description: 'All paid backers for a campaign, one row per unique email with totals.',
+  description: 'Paid backers for a SINGLE campaign, deduped by email. Use only when the question scopes to one campaign — for product-name questions across multiple campaigns, prefer paid_buyers_of_product.',
   example_questions: [
     'Give me all paid Aliens Expanded backers',
     'Show paid backers for The Thing Expanded',
@@ -286,6 +288,81 @@ const recentOrders: Template = {
   ],
 }
 
+// 9b. Paid buyers of a product across ALL campaigns and platforms.
+// Searches line-item titles by ILIKE — anyone whose paid order
+// contains a line matching the product name (in raw_orders.payload,
+// historic_order_lines, or isod_order_lines) gets one row out.
+//
+// This is the "across all campaigns" sibling of paid_backers_for_campaign:
+// the campaign-template scopes to one campaign id; this template ignores
+// campaign and unions all sources. Single source of truth for the
+// per-paying-customer dedupe — uses lower(btrim(email)).
+const paidBuyersOfProduct: Template = {
+  name: 'paid_buyers_of_product',
+  description: 'All paid buyers of a product name across ALL campaigns and platforms (Shopify live + historic + ISOD). One row per unique email. Use when the user asks about a product/franchise spanning multiple campaigns or says "across all campaigns".',
+  example_questions: [
+    'How many customers have bought Aliens Expanded across all campaigns',
+    'All paid buyers of Aliens Expanded',
+    'Everyone who bought The Thing Expanded across every campaign',
+    'List all customers who have ever bought TerrorBytes',
+    'Backers of Aliens Expanded in any campaign',
+  ],
+  params: [
+    { name: 'product_name', type: 'string', required: true } as const,
+  ],
+  sql: () => `
+    WITH buyers AS (
+      -- Shopify live (raw_orders payload->line_items)
+      SELECT
+        LOWER(BTRIM(ro.email)) AS email,
+        ro.id::text             AS order_ref,
+        (li->>'price')::numeric * COALESCE((li->>'quantity')::int, 1) AS line_spend,
+        'shopify'               AS source
+      FROM aa_01_campaigns.raw_orders ro
+      CROSS JOIN LATERAL jsonb_array_elements(ro.payload->'line_items') AS li
+      WHERE ro.financial_status = 'paid'
+        AND ro.email IS NOT NULL AND BTRIM(ro.email) <> ''
+        AND COALESCE(li->>'title','') ILIKE '%' || $1::text || '%'
+
+      UNION ALL
+
+      -- Historic platforms (gumroad / shopify_legacy / wix CSV imports)
+      SELECT
+        LOWER(BTRIM(ho.email)),
+        ho.id::text,
+        COALESCE(hol.line_revenue, 0),
+        ho.source_platform
+      FROM aa_01_campaigns.historic_order_lines hol
+      JOIN aa_01_campaigns.historic_orders ho ON ho.id = hol.historic_order_id
+      WHERE ho.order_status = 'paid'
+        AND ho.email IS NOT NULL AND BTRIM(ho.email) <> ''
+        AND COALESCE(hol.product_name_raw,'') ILIKE '%' || $1::text || '%'
+
+      UNION ALL
+
+      -- ISOD legacy import (Backerkit fulfilled — paid by definition)
+      SELECT
+        LOWER(BTRIM(io.customer_email)),
+        io.id::text,
+        COALESCE(iol.price_paid, 0),
+        'isod'
+      FROM aa_01_campaigns.isod_orders io
+      JOIN aa_01_campaigns.isod_order_lines iol ON iol.isod_order_id = io.id
+      WHERE io.customer_email IS NOT NULL AND BTRIM(io.customer_email) <> ''
+        AND COALESCE(iol.line_title,'') ILIKE '%' || $1::text || '%'
+    )
+    SELECT
+      email,
+      COUNT(DISTINCT order_ref)::int       AS order_count,
+      SUM(line_spend)::numeric             AS total_spent,
+      string_agg(DISTINCT source, ', ')    AS sources
+    FROM buyers
+    GROUP BY email
+    ORDER BY total_spent DESC NULLS LAST
+    LIMIT 50000;`,
+  build_params: (p) => [String(p.product_name ?? '').trim()],
+}
+
 // 10. Customer lookup by email — single record + all_campaigns from view.
 const customerLookupByEmail: Template = {
   name: 'customer_lookup_by_email',
@@ -312,6 +389,7 @@ const customerLookupByEmail: Template = {
 
 export const templates: Template[] = [
   paidBackersForCampaign,
+  paidBuyersOfProduct,
   multiUnitBuyersForCampaign,
   refundedOrdersForCampaign,
   isodOnlyCustomers,

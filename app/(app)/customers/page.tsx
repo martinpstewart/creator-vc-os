@@ -58,7 +58,12 @@ export default async function CustomersPage({
       <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 mb-6">
         <div>
           <h1 className="text-xl md:text-2xl font-semibold text-white">Customers</h1>
-          <p className="text-sm text-zinc-500 mt-1">{fmt(total)} total</p>
+          {/* Number now reflects PAYING customers only — the
+              get_customers_list RPC filters on aa_02_crm.v_paying_customer_emails
+              by default. Non-paying contacts (Backerkit signups,
+              refund-only emails) are accessible by direct URL but
+              hidden from this listing. */}
+          <p className="text-sm text-zinc-500 mt-1">{fmt(total)} paying customers</p>
         </div>
         <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 sm:gap-3 flex-wrap">
           <Suspense>

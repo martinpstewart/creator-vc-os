@@ -92,7 +92,8 @@
       "Bash(echo \"=== Push current worktree branch up as `main` on the remote ===\")",
       "Bash(git push *)",
       "Bash(git ls-remote *)",
-      "Bash(vercel deploy *)"
+      "Bash(vercel deploy *)",
+      "Bash(npx supabase *)"
     ]
   }
 }

@@ -65,6 +65,23 @@ export const getCampaigns = unstable_cache(
   { revalidate: 300, tags: ['campaigns'] }
 )
 
+// Canonical paying-customer count — single source of truth for any
+// screen that needs "how many paying customers do we have, deduped".
+// Backed by aa_02_crm.v_paying_customer_emails. Used by the Campaigns
+// header so its total reconciles with the Customers page + home
+// headline; otherwise summing per-campaign counts would over-count
+// anyone who backed multiple campaigns.
+export const getPayingCustomerCount = unstable_cache(
+  () =>
+    withRetry(async () => {
+      const { data, error } = await supabase.rpc('get_paying_customer_count')
+      if (error) throw error
+      return Number(data ?? 0)
+    }, 'getPayingCustomerCount'),
+  ['paying-customer-count'],
+  { revalidate: 60, tags: ['paying-customer-count'] }
+)
+
 // Per-campaign stats for dashboard.
 //
 // Calls public.get_campaign_stats_v2 — a SECURITY DEFINER RPC that
@@ -84,11 +101,16 @@ type CampaignStatRow = {
 export const getCampaignStats = unstable_cache(
   () =>
     withRetry(async () => {
-      const { data, error } = await supabase.rpc('get_campaign_stats_v2')
+      // v3 is the canonical paying-customer source — per-campaign
+      // distinct-email counts and order counts come from
+      // aa_02_crm.v_campaign_paying_emails so every screen + Ask agree.
+      // v2 is kept on the DB for backwards-compat audit; drop later
+      // once nothing calls it.
+      const { data, error } = await supabase.rpc('get_campaign_stats_v3')
       if (error) throw error
       return (data ?? []) as CampaignStatRow[]
     }, 'getCampaignStats'),
-  ['campaign-stats-v4'],
+  ['campaign-stats-v5'],
   { revalidate: 60, tags: ['campaign-stats'] }
 )
 
