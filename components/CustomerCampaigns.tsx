@@ -5,6 +5,22 @@ import { createClient } from '@/lib/supabase-browser'
 import Link from 'next/link'
 
 type CampaignDetail = { campaign_name: string; campaign_id: number; legacy_code: string; source: string }
+
+// Friendly display labels for the source badge. Anything not in the map
+// falls back to a capitalised version of the raw string.
+const SOURCE_LABEL: Record<string, string> = {
+  shopify:        'Shopify',
+  shopify_legacy: 'Shopify (legacy)',
+  gumroad:        'Gumroad',
+  wix:            'Wix',
+  isod:           'ISOD',
+  raw_order:      'Shopify',
+  campaign_order: 'Campaign',
+}
+function sourceLabel(source: string): string {
+  if (SOURCE_LABEL[source]) return SOURCE_LABEL[source]
+  return source.charAt(0).toUpperCase() + source.slice(1).replace(/_/g, ' ')
+}
 type OrderLine = {
   product_name: string
   variant_name: string | null
@@ -216,8 +232,8 @@ export default function CustomerCampaigns({
                       <td className="px-6 py-3.5 font-medium text-white">{camp.campaign_name}</td>
                       <td className="px-6 py-3.5 text-zinc-400 font-mono text-xs">{camp.legacy_code}</td>
                       <td className="px-6 py-3.5">
-                        <span className="inline-flex px-2 py-0.5 rounded-full text-xs font-medium bg-zinc-800 text-zinc-300 capitalize">
-                          {camp.source}
+                        <span className="inline-flex px-2 py-0.5 rounded-full text-xs font-medium bg-zinc-800 text-zinc-300">
+                          {sourceLabel(camp.source)}
                         </span>
                       </td>
                       <td className="px-4 py-3.5 text-zinc-500 text-xs">

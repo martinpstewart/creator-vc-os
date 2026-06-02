@@ -2,24 +2,38 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { Eye, Users, Clapperboard, Sparkles, Mail } from 'lucide-react'
+import { Eye, Users, Clapperboard, Ticket, Mail } from 'lucide-react'
+import { useAuth } from './AuthProvider'
+import { canAccess, type Screen } from '@/lib/auth'
 
-const items = [
-  { href: '/', label: 'Home', Icon: Eye },
-  { href: '/customers', label: 'People', Icon: Users },
-  { href: '/campaigns', label: 'Campaigns', Icon: Clapperboard },
-  { href: '/query', label: 'Ask', Icon: Sparkles },
-  { href: '/email', label: 'Email', Icon: Mail },
+// Bottom nav stays at five entries max for thumb reach. `screen` keys
+// match lib/auth.ts so items disappear automatically for restricted roles.
+// Tickets bumps Ask off mobile — Ask is desktop-power-user UX and Tickets
+// is core staff workflow; admin still sees 5, team / support fewer.
+const items: ReadonlyArray<{
+  href: string
+  label: string
+  Icon: typeof Eye
+  screen: Screen
+}> = [
+  { href: '/', label: 'Home', Icon: Eye, screen: 'dashboard' },
+  { href: '/customers', label: 'People', Icon: Users, screen: 'customers' },
+  { href: '/campaigns', label: 'Campaigns', Icon: Clapperboard, screen: 'campaigns' },
+  { href: '/tickets', label: 'Tickets', Icon: Ticket, screen: 'tickets' },
+  { href: '/marketing', label: 'Marketing', Icon: Mail, screen: 'marketing' },
 ]
 
 export default function BottomNav() {
   const pathname = usePathname()
+  const { role } = useAuth()
+  const visible = items.filter((item) => canAccess(role, item.screen))
+
   return (
     <nav
       className="md:hidden fixed bottom-0 inset-x-0 z-30 bg-zinc-900/95 backdrop-blur border-t border-zinc-800 flex items-stretch"
       style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}
     >
-      {items.map(({ href, label, Icon }) => {
+      {visible.map(({ href, label, Icon }) => {
         const active = href === '/' ? pathname === '/' : pathname.startsWith(href)
         return (
           <Link

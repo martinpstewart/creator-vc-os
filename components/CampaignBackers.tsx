@@ -4,6 +4,7 @@ import { useState } from 'react'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase-browser'
 import ClickableRow from './ClickableRow'
+import { useAuth } from './AuthProvider'
 
 type BackerRow = {
   email: string
@@ -38,6 +39,9 @@ export default function CampaignBackers({
   const [loading, setLoading] = useState(false)
   const [fetchError, setFetchError] = useState<string | null>(null)
   const supabase = createClient()
+  // Spend column is admin-only; team/support see the row without dollar amounts.
+  const { role } = useAuth()
+  const showSpend = role === 'admin'
 
   const totalPages = Math.ceil(total / PAGE_SIZE)
 
@@ -46,7 +50,8 @@ export default function CampaignBackers({
     setLoading(true)
     setFetchError(null)
     try {
-      const { data, error } = await supabase.rpc('get_campaign_backer_list', {
+      // Combined RPC — same return shape but includes historic_orders.
+      const { data, error } = await supabase.rpc('get_campaign_backer_list_combined', {
         p_campaign_id: campaignId,
         p_page: p,
         p_page_size: PAGE_SIZE,
@@ -91,7 +96,9 @@ export default function CampaignBackers({
                 <th className="text-left px-6 py-3 text-xs font-medium text-zinc-500">Backer</th>
                 <th className="text-left px-6 py-3 text-xs font-medium text-zinc-500">Email</th>
                 <th className="text-right px-6 py-3 text-xs font-medium text-zinc-500">Orders</th>
-                <th className="text-right px-6 py-3 text-xs font-medium text-zinc-500">Spend</th>
+                {showSpend && (
+                  <th className="text-right px-6 py-3 text-xs font-medium text-zinc-500">Spend</th>
+                )}
               </tr>
             </thead>
             <tbody>
@@ -111,9 +118,11 @@ export default function CampaignBackers({
                   </td>
                   <td className="px-6 py-3.5 text-zinc-400">{b.email}</td>
                   <td className="px-6 py-3.5 text-right text-zinc-300">{b.order_count}</td>
-                  <td className="px-6 py-3.5 text-right font-medium text-white">
-                    {b.total_spend !== null ? fmt(b.total_spend, true) : '—'}
-                  </td>
+                  {showSpend && (
+                    <td className="px-6 py-3.5 text-right font-medium text-white">
+                      {b.total_spend !== null ? fmt(b.total_spend, true) : '—'}
+                    </td>
+                  )}
                 </ClickableRow>
               ))}
             </tbody>

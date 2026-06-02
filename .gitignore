@@ -40,3 +40,12 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 supabase/.temp/
+
+# customer data exports — never commit imported CSV / XML drops
+# (Gumroad / Shopify / Wix dumps, Freshdesk account exports, etc).
+# Belt-and-braces: blanket pattern + explicit common drop folders.
+*.csv
+*.xml
+/exports/
+/downloads/
+/data/

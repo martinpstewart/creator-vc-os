@@ -1,31 +1,41 @@
 'use client'
 
 import Link from 'next/link'
-import { usePathname, useRouter } from 'next/navigation'
-import { createClient } from '@/lib/supabase-browser'
+import { usePathname } from 'next/navigation'
 import Logo from '@/components/Logo'
-import { Eye, Users, Clapperboard, LogOut, Sparkles, Mail, Package } from 'lucide-react'
+import { Eye, Users, Clapperboard, LogOut, Sparkles, Mail, Package, UserCog, Ticket } from 'lucide-react'
+import { useAuth } from './AuthProvider'
+import { canAccess, type Screen } from '@/lib/auth'
+import ThemeToggle from './ThemeToggle'
 
-const nav = [
-  { href: '/', label: 'Dashboard', Icon: Eye },
-  { href: '/customers', label: 'Customers', Icon: Users },
-  { href: '/campaigns', label: 'Campaigns', Icon: Clapperboard },
-  { href: '/query', label: 'Ask', Icon: Sparkles },
-  { href: '/email', label: 'Email', Icon: Mail },
-  { href: '/catalogue', label: 'Catalogue', Icon: Package },
+// `screen` matches the ACCESS map in lib/auth.ts — hide an entry from a
+// role's nav and the middleware also blocks deep-linking to it.
+const nav: ReadonlyArray<{
+  href: string
+  label: string
+  Icon: typeof Eye
+  screen: Screen
+}> = [
+  { href: '/', label: 'Dashboard', Icon: Eye, screen: 'dashboard' },
+  { href: '/customers', label: 'Customers', Icon: Users, screen: 'customers' },
+  { href: '/campaigns', label: 'Campaigns', Icon: Clapperboard, screen: 'campaigns' },
+  { href: '/tickets', label: 'Tickets', Icon: Ticket, screen: 'tickets' },
+  { href: '/query', label: 'Ask', Icon: Sparkles, screen: 'query' },
+  { href: '/marketing', label: 'Marketing', Icon: Mail, screen: 'marketing' },
+  { href: '/catalogue', label: 'Catalogue', Icon: Package, screen: 'catalogue' },
+  { href: '/users', label: 'Users', Icon: UserCog, screen: 'users' },
 ]
 
 export default function Sidebar({ onNavigate }: { onNavigate?: () => void } = {}) {
   const pathname = usePathname()
-  const router = useRouter()
+  const { role, signOut } = useAuth()
 
   async function handleSignOut() {
-    const supabase = createClient()
-    await supabase.auth.signOut()
     onNavigate?.()
-    router.push('/login')
-    router.refresh()
+    await signOut()
   }
+
+  const visible = nav.filter((item) => canAccess(role, item.screen))
 
   return (
     <aside className="w-56 h-full shrink-0 bg-zinc-900 border-r border-zinc-800 flex flex-col">
@@ -33,7 +43,7 @@ export default function Sidebar({ onNavigate }: { onNavigate?: () => void } = {}
         <Logo size="md" />
       </div>
       <nav className="flex-1 px-3 py-4 space-y-0.5">
-        {nav.map(({ href, label, Icon }) => {
+        {visible.map(({ href, label, Icon }) => {
           const active = href === '/' ? pathname === '/' : pathname.startsWith(href)
           return (
             <Link
@@ -52,7 +62,8 @@ export default function Sidebar({ onNavigate }: { onNavigate?: () => void } = {}
           )
         })}
       </nav>
-      <div className="px-3 py-4 border-t border-zinc-800">
+      <div className="px-3 py-4 border-t border-zinc-800 space-y-0.5">
+        <ThemeToggle variant="full" />
         <button
           onClick={handleSignOut}
           className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-md text-sm text-zinc-400 hover:text-white hover:bg-zinc-800/50 transition-colors"

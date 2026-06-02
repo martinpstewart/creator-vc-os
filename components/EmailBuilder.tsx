@@ -6,6 +6,7 @@ import dynamic from 'next/dynamic'
 import Link from 'next/link'
 import { ArrowLeft, Send, Save } from 'lucide-react'
 import { createClient } from '@/lib/supabase-browser'
+import SegmentPickerForTemplate from '@/components/marketing/SegmentPickerForTemplate'
 
 // react-email-editor mounts an iframe and reads window — load client-only.
 // The package's exported types tie generics to the specific embed runtime
@@ -37,17 +38,20 @@ export default function EmailBuilder({
   initialName,
   initialSubject,
   initialDesign,
+  initialSegmentId,
 }: {
   mode: 'create' | 'edit'
   initialId?: number
   initialName?: string
   initialSubject?: string | null
   initialDesign?: unknown
+  initialSegmentId?: number | null
 }) {
   const router = useRouter()
   const editorRef = useRef<UnlayerInstance | null>(null)
   const [name, setName] = useState(initialName ?? 'Untitled template')
   const [subject, setSubject] = useState(initialSubject ?? '')
+  const [segmentId, setSegmentId] = useState<number | null>(initialSegmentId ?? null)
   const [editorReady, setEditorReady] = useState(false)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -105,6 +109,7 @@ export default function EmailBuilder({
         subject: subject.trim() || null,
         design,
         html,
+        segment_id: segmentId,
         created_by: user?.id ?? null,
       }
 
@@ -124,7 +129,7 @@ export default function EmailBuilder({
         if (insErr) throw insErr
         // Clear the recipient handoff once the template owns the context.
         sessionStorage.removeItem(RECIPIENTS_STORAGE_KEY)
-        router.replace(`/email/${data.id}`)
+        router.replace(`/marketing/${data.id}`)
         router.refresh()
       }
     } catch (e) {
@@ -136,13 +141,14 @@ export default function EmailBuilder({
 
   function handleSendStub() {
     // TODO: wire to SES/Unlayer send flow when that lands. For now,
-    // surface the recipients + subject + html so the user can see we
+    // surface the segment + recipients + subject so the user can see we
     // captured everything.
     alert(
       `Send is not wired yet.\n\n` +
         `Template: ${name}\n` +
         `Subject: ${subject || '—'}\n` +
-        `Recipients: ${recipients?.emails?.length ?? 0}`,
+        `Segment: ${segmentId ?? 'none'}\n` +
+        `Recipients (from /query handoff): ${recipients?.emails?.length ?? 0}`,
     )
   }
 
@@ -151,7 +157,7 @@ export default function EmailBuilder({
       {/* Sticky header: name, subject, actions */}
       <div className="bg-zinc-900 border-b border-zinc-800 px-4 md:px-6 py-3 flex flex-col md:flex-row md:items-center gap-3">
         <Link
-          href="/email"
+          href="/marketing"
           className="hidden md:inline-flex items-center gap-1.5 text-xs text-zinc-500 hover:text-white transition-colors shrink-0"
         >
           <ArrowLeft size={14} /> Back
@@ -189,6 +195,11 @@ export default function EmailBuilder({
             Send
           </button>
         </div>
+      </div>
+
+      {/* Segment picker strip */}
+      <div className="bg-zinc-900/60 border-b border-zinc-800 px-4 md:px-6 py-2">
+        <SegmentPickerForTemplate value={segmentId} onChange={setSegmentId} />
       </div>
 
       {/* Banners */}

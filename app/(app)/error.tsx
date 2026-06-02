@@ -1,7 +1,13 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
+
+// Sessionstorage key prefix so the auto-retry only fires once per error
+// per session. Without it a hard-broken page would retry-loop forever.
+// The digest is the per-throw fingerprint Next.js attaches, so different
+// errors each get their own one-shot retry budget.
+const RETRY_KEY = 'app-error-retried:'
 
 export default function AppError({
   error,
@@ -12,15 +18,54 @@ export default function AppError({
 }) {
   const router = useRouter()
   const [retrying, setRetrying] = useState(false)
+  const autoRetriedRef = useRef(false)
 
   useEffect(() => {
     console.error('[app] route error', error)
   }, [error])
 
+  // Auto-retry once per (digest, session). The typical cause is a
+  // transient Vercel↔Supabase blip the data layer's withRetry didn't
+  // recover from — one fresh page-render usually fixes it without ever
+  // showing the user the boundary card.
+  useEffect(() => {
+    if (autoRetriedRef.current) return
+    autoRetriedRef.current = true
+
+    const key = RETRY_KEY + (error.digest ?? 'no-digest')
+    let alreadyRetried = false
+    try {
+      alreadyRetried = sessionStorage.getItem(key) === '1'
+    } catch {
+      // sessionStorage can throw in private mode / SSR — treat as "skip".
+      return
+    }
+    if (alreadyRetried) return
+
+    try {
+      sessionStorage.setItem(key, '1')
+    } catch {
+      return
+    }
+    setRetrying(true)
+    router.refresh()
+    reset()
+  }, [error.digest, reset, router])
+
   function manualRetry() {
     setRetrying(true)
     router.refresh()
     reset()
+  }
+
+  // While the auto-retry is in flight, render a neutral placeholder so
+  // the boundary card doesn't flash before the refresh swaps the tree.
+  if (retrying) {
+    return (
+      <div className="flex h-full items-center justify-center p-8 text-sm text-zinc-500">
+        Loading…
+      </div>
+    )
   }
 
   return (

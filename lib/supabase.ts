@@ -25,7 +25,9 @@ const crm = supabase.schema('aa_02_crm')
 // Run an RPC/query with one quick retry on transient failure.
 // Many Vercel→Supabase blips (TLS handshake, fetch ECONNRESET, brief
 // PostgREST 5xx) are gone within a few hundred ms.
-async function withRetry<T>(fn: () => Promise<T>, label: string): Promise<T> {
+// Exported so the auth helpers + ticket wrappers can share one retry
+// policy — anywhere else that talks to Supabase should call through this.
+export async function withRetry<T>(fn: () => Promise<T>, label: string): Promise<T> {
   try {
     return await fn()
   } catch (e) {
@@ -102,17 +104,25 @@ type CustomerRow = {
   campaign_orders_detail: unknown
   raw_orders_detail: unknown
   isod_orders_detail: unknown
+  historic_orders_detail: unknown
   total_count: number
 }
 
 // Customers list — uses RPC so spend is based on actual Shopify raw_orders (not Backerkit summary)
-export async function getCustomers(search?: string, page = 1, pageSize = 50, campaignIds?: number[]) {
+export async function getCustomers(
+  search?: string,
+  page = 1,
+  pageSize = 50,
+  campaignIds?: number[],
+  stores?: string[],
+) {
   return withRetry(async () => {
     const { data, error } = await supabase.rpc('get_customers_list', {
       p_search: search ?? null,
       p_page: page,
       p_page_size: pageSize,
       p_campaign_ids: campaignIds && campaignIds.length > 0 ? campaignIds : null,
+      p_stores: stores && stores.length > 0 ? stores : null,
     })
     if (error) throw error
     const rows = (data ?? []) as CustomerRow[]
@@ -146,7 +156,10 @@ export type BackerRow = { email: string; full_name: string | null; total_spend: 
 // filtered by product_campaign_id, ISOD fallback baked into the SQL.
 export async function getCampaignBackerList(campaignId: number, page = 1, pageSize = 100) {
   return withRetry(async () => {
-    const { data, error } = await supabase.rpc('get_campaign_backer_list_v2', {
+    // Combined RPC unions raw_orders / order_entitlements / isod_orders
+    // / historic_orders so campaigns dominated by historic (TerrorBytes,
+    // FPS cross-sells) show their actual backer list.
+    const { data, error } = await supabase.rpc('get_campaign_backer_list_combined', {
       p_campaign_id: campaignId,
       p_page: page,
       p_page_size: pageSize,
@@ -207,6 +220,57 @@ export const getCampaignUnitsSold = unstable_cache(
   { revalidate: 60, tags: ['campaign-units-sold'] }
 )
 
+// Historic units-sold per product (from historic_orders CSV imports).
+// Same shape as UnitsSoldRow but with an extra source_platform column
+// so the UI can show which channel each historic product came from.
+export type HistoricUnitsSoldRow = UnitsSoldRow & { source_platform: string }
+export async function getCampaignHistoricUnitsSold(campaignId: number) {
+  return withRetry(async () => {
+    const { data, error } = await supabase.rpc('get_campaign_historic_units_sold', {
+      p_campaign_id: campaignId,
+    })
+    if (error) throw error
+    return (data ?? []) as HistoricUnitsSoldRow[]
+  }, 'getCampaignHistoricUnitsSold')
+}
+
+// Historic-orders breakdown per platform for a campaign. Used by the
+// campaign detail page to surface Gumroad / shopify_legacy / Wix activity
+// that doesn't appear in v_raw_order_line_attribution.
+export type HistoricBreakdownRow = {
+  source_platform: string
+  orders: number
+  unique_customers: number
+  revenue: number | string
+  units: number
+}
+export async function getCampaignHistoricBreakdown(campaignId: number) {
+  return withRetry(async () => {
+    const { data, error } = await supabase.rpc('get_campaign_historic_breakdown', {
+      p_campaign_id: campaignId,
+    })
+    if (error) throw error
+    return (data ?? []) as HistoricBreakdownRow[]
+  }, 'getCampaignHistoricBreakdown')
+}
+
+// One-shot rollup of historic_orders per campaign — for the campaigns
+// list page so it can combine live + historic in a single render.
+export type HistoricCampaignTotal = {
+  campaign_id: number
+  orders: number
+  unique_customers: number
+  revenue: number | string
+  units: number
+}
+export async function getCampaignsHistoricTotals() {
+  return withRetry(async () => {
+    const { data, error } = await supabase.rpc('get_campaigns_historic_totals')
+    if (error) throw error
+    return (data ?? []) as HistoricCampaignTotal[]
+  }, 'getCampaignsHistoricTotals')
+}
+
 // Single customer detail — uses RPC so total_spend reflects actual Shopify line items, not Backerkit
 export async function getCustomerByEmail(email: string) {
   return withRetry(async () => {
@@ -217,6 +281,8 @@ export async function getCustomerByEmail(email: string) {
     id: number
     email: string
     full_name: string | null
+    first_name: string | null
+    last_name: string | null
     phone: string | null
     total_orders: number
     total_spend: number
@@ -230,9 +296,11 @@ export async function getCustomerByEmail(email: string) {
     shipping_city: string | null
     shipping_zip: string | null
     shipping_country: string | null
+    shipping_country_code: string | null
     campaign_orders_detail: unknown
     raw_orders_detail: unknown
     isod_orders_detail: unknown
+    historic_orders_detail: unknown
     }
   }, 'getCustomerByEmail')
 }

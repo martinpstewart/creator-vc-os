@@ -3,6 +3,13 @@ import Link from 'next/link'
 import { Suspense } from 'react'
 import CampaignFilter from '@/components/CampaignFilter'
 import CustomerSearch from '@/components/CustomerSearch'
+import StoreFilter, { type StoreValue } from '@/components/StoreFilter'
+
+// Validation list duplicated server-side: importing a runtime value
+// from a 'use client' module gives the server a proxy, not an array,
+// so .includes(...) blows up. Types are erased at compile time so
+// the type-only import above is fine.
+const STORE_VALUES_RUNTIME = ['shopify', 'shopify_legacy', 'gumroad', 'isod', 'wix'] as const
 import ClickableRow from '@/components/ClickableRow'
 
 function fmt(n: number | string | null, currency = false) {
@@ -18,16 +25,30 @@ type CampaignDetail = { campaign_name: string; campaign_id: number }
 export default async function CustomersPage({
   searchParams,
 }: {
-  searchParams: Promise<{ q?: string; page?: string; campaigns?: string }>
+  searchParams: Promise<{ q?: string; page?: string; campaigns?: string; stores?: string }>
 }) {
-  const { q, page: pageStr, campaigns: campaignsParam } = await searchParams
+  const { q, page: pageStr, campaigns: campaignsParam, stores: storesParam } = await searchParams
   const page = parseInt(pageStr ?? '1')
   const selectedIds = campaignsParam
     ? campaignsParam.split(',').map(Number).filter(Boolean)
     : []
+  // Validate against the known store enum so a malformed URL can't
+  // poison the RPC call.
+  const selectedStores: StoreValue[] = storesParam
+    ? (storesParam
+        .split(',')
+        .map((s) => s.trim().toLowerCase())
+        .filter((s): s is StoreValue => (STORE_VALUES_RUNTIME as readonly string[]).includes(s)))
+    : []
 
   const [{ customers, total }, campaigns] = await Promise.all([
-    getCustomers(q, page, 50, selectedIds.length > 0 ? selectedIds : undefined),
+    getCustomers(
+      q,
+      page,
+      50,
+      selectedIds.length > 0 ? selectedIds : undefined,
+      selectedStores.length > 0 ? selectedStores : undefined,
+    ),
     getCampaigns(),
   ])
   const totalPages = Math.ceil(total / 50)
@@ -39,7 +60,10 @@ export default async function CustomersPage({
           <h1 className="text-xl md:text-2xl font-semibold text-white">Customers</h1>
           <p className="text-sm text-zinc-500 mt-1">{fmt(total)} total</p>
         </div>
-        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 sm:gap-3">
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 sm:gap-3 flex-wrap">
+          <Suspense>
+            <StoreFilter selected={selectedStores} />
+          </Suspense>
           <Suspense>
             <CampaignFilter campaigns={campaigns} selected={selectedIds} />
           </Suspense>
@@ -111,23 +135,36 @@ export default async function CustomersPage({
           </tbody>
         </table>
 
-        {totalPages > 1 && (
-          <div className="flex items-center justify-between px-6 py-4 border-t border-zinc-800">
-            <p className="text-xs text-zinc-500">Page {page} of {totalPages}</p>
-            <div className="flex gap-2">
-              {page > 1 && (
-                <Link href={`/customers?${q ? `q=${q}&` : ''}${campaignsParam ? `campaigns=${campaignsParam}&` : ''}page=${page - 1}`} className="px-3 py-1.5 bg-zinc-800 hover:bg-zinc-700 text-xs text-white rounded-md transition-colors">
-                  ← Prev
-                </Link>
-              )}
-              {page < totalPages && (
-                <Link href={`/customers?${q ? `q=${q}&` : ''}${campaignsParam ? `campaigns=${campaignsParam}&` : ''}page=${page + 1}`} className="px-3 py-1.5 bg-zinc-800 hover:bg-zinc-700 text-xs text-white rounded-md transition-colors">
-                  Next →
-                </Link>
-              )}
+        {totalPages > 1 && (() => {
+          // Build a query string once, omitting `page` which we splice in
+          // per Prev/Next button. Cleaner than the inline ternary mess.
+          const base = new URLSearchParams()
+          if (q) base.set('q', q)
+          if (campaignsParam) base.set('campaigns', campaignsParam)
+          if (storesParam) base.set('stores', storesParam)
+          const linkFor = (p: number) => {
+            const u = new URLSearchParams(base)
+            u.set('page', String(p))
+            return `/customers?${u.toString()}`
+          }
+          return (
+            <div className="flex items-center justify-between px-6 py-4 border-t border-zinc-800">
+              <p className="text-xs text-zinc-500">Page {page} of {totalPages}</p>
+              <div className="flex gap-2">
+                {page > 1 && (
+                  <Link href={linkFor(page - 1)} className="px-3 py-1.5 bg-zinc-800 hover:bg-zinc-700 text-xs text-white rounded-md transition-colors">
+                    ← Prev
+                  </Link>
+                )}
+                {page < totalPages && (
+                  <Link href={linkFor(page + 1)} className="px-3 py-1.5 bg-zinc-800 hover:bg-zinc-700 text-xs text-white rounded-md transition-colors">
+                    Next →
+                  </Link>
+                )}
+              </div>
             </div>
-          </div>
-        )}
+          )
+        })()}
       </div>
     </div>
   )

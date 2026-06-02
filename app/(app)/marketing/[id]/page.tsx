@@ -16,7 +16,7 @@ export default async function EmailDetailPage({
   const supabase = await createClient()
   const { data: template, error } = await supabase
     .from('email_templates')
-    .select('id, name, subject, design')
+    .select('id, name, subject, design, segment_id')
     .eq('id', id)
     .maybeSingle()
 
@@ -30,6 +30,7 @@ export default async function EmailDetailPage({
       initialName={template.name}
       initialSubject={template.subject}
       initialDesign={template.design}
+      initialSegmentId={template.segment_id ?? null}
     />
   )
 }

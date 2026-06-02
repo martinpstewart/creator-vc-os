@@ -1,7 +1,12 @@
 import { getCustomerByEmail } from '@/lib/supabase'
+import { createClient } from '@/lib/supabase-server'
+import { listCustomerTickets } from '@/lib/tickets'
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import CustomerCampaigns from '@/components/CustomerCampaigns'
+import CustomerTicketsList from '@/components/CustomerTicketsList'
+import CustomerActivityTabs from '@/components/CustomerActivityTabs'
+import EditCustomerButton from '@/components/EditCustomerButton'
 
 function fmt(n: number | string | null, currency = false) {
   if (n === null || n === undefined) return '—'
@@ -27,10 +32,19 @@ export default async function CustomerDetailPage({
   const customer = await getCustomerByEmail(email).catch(() => null)
   if (!customer) notFound()
 
+  // Inline tickets list — fetched server-side with the cookie-aware client
+  // so the RPC's staff-only check sees our session. We tolerate the call
+  // failing (e.g. session race during sign-in) and just hide the section.
+  const ticketsClient = await createClient()
+  const customerTickets = await listCustomerTickets(ticketsClient, customer.id).catch(() => [])
+
   const allCampaigns: CampaignDetail[] = [
     ...((customer.campaign_orders_detail as CampaignDetail[]) ?? []),
     ...((customer.raw_orders_detail as CampaignDetail[]) ?? []),
     ...((customer.isod_orders_detail as CampaignDetail[]) ?? []),
+    // Historic platforms (wix / gumroad / shopify_legacy) — populated by
+    // the 27 May 2026 customer_summary patch.
+    ...((customer.historic_orders_detail as CampaignDetail[]) ?? []),
   ]
   const campaigns = [...new Map(allCampaigns.map(x => [x.campaign_id, x])).values()]
 
@@ -62,9 +76,25 @@ export default async function CustomerDetailPage({
         )}
       </div>
 
-      <div className="mb-6 md:mb-8">
-        <h1 className="text-xl md:text-2xl font-semibold text-white break-words">{customer.full_name || email}</h1>
-        <p className="text-xs md:text-sm text-zinc-500 mt-1 break-all">{email}{customer.phone ? ` · ${customer.phone}` : ''}</p>
+      <div className="mb-6 md:mb-8 flex flex-wrap items-start justify-between gap-3">
+        <div className="min-w-0">
+          <h1 className="text-xl md:text-2xl font-semibold text-white break-words">{customer.full_name || email}</h1>
+          <p className="text-xs md:text-sm text-zinc-500 mt-1 break-all">{email}{customer.phone ? ` · ${customer.phone}` : ''}</p>
+        </div>
+        <EditCustomerButton
+          customer={{
+            id: customer.id,
+            email: customer.email,
+            first_name: customer.first_name,
+            last_name: customer.last_name,
+            phone: customer.phone,
+            shipping_address_1: customer.shipping_address_1,
+            shipping_address_2: customer.shipping_address_2,
+            shipping_city: customer.shipping_city,
+            shipping_zip: customer.shipping_zip,
+            shipping_country: customer.shipping_country,
+          }}
+        />
       </div>
 
       {/* KPI cards */}
@@ -99,11 +129,20 @@ export default async function CustomerDetailPage({
         </div>
       </div>
 
-      {/* Campaigns — expandable rows, auto-opens fromCampaignId if set */}
-      <CustomerCampaigns
-        campaigns={campaigns}
-        email={email}
-        initialCampaignId={fromCampaignId}
+      {/* Activity — Campaigns + Tickets behind tabs so the page stays
+          compact. Both panels are kept mounted so CustomerCampaigns'
+          expansion / fetched-orders state survives tab switches. */}
+      <CustomerActivityTabs
+        campaignCount={campaigns.length}
+        ticketCount={customerTickets.length}
+        campaignsSlot={
+          <CustomerCampaigns
+            campaigns={campaigns}
+            email={email}
+            initialCampaignId={fromCampaignId}
+          />
+        }
+        ticketsSlot={<CustomerTicketsList tickets={customerTickets} />}
       />
     </div>
   )
