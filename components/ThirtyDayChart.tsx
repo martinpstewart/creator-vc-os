@@ -1,10 +1,18 @@
-// Reusable 30-day line chart. Inline SVG, zero deps. Server-renderable
-// (no 'use client' — it's static markup). Originally lived in the home
-// dashboard; pulled out so the Tickets screen can reuse the same look.
+'use client'
+
+// Reusable 30-day line chart. Inline SVG, zero deps.
 //
-// The visible dot scales with activity so quiet days still have a
-// hoverable target, and a generous invisible hit-circle sits over each
-// point so the native title tooltip is easy to land on.
+// Tooltip strategy: we used to lean on the native SVG <title> element,
+// which is the spec-correct "hover for tooltip" hook — but it's flaky
+// in practice (~1s browser delay, inconsistent across engines, dead on
+// mobile, and especially unreliable on viewBox-scaled SVGs). The chart
+// now tracks the hovered point in React state and renders a tooltip
+// group at the hovered dot — instant, consistent, and tap-on-mobile.
+//
+// Switching to a client component is the cost; it's a tiny render tree
+// so the extra hydration is negligible.
+
+import { useState } from 'react'
 
 export type TimelinePoint = { date: string; count: number }
 
@@ -30,6 +38,10 @@ export default function ThirtyDayChart({
   unitNoun?: string
   emptyLabel?: string
 }) {
+  // Index of the currently-hovered (or tapped) point, or null. Sits at
+  // the top of the component so it can short-circuit early.
+  const [hoverIdx, setHoverIdx] = useState<number | null>(null)
+
   if (data.length === 0) {
     return (
       <div className="bg-zinc-900 border border-zinc-800 rounded-xl px-4 py-6 text-xs text-zinc-500">
@@ -65,6 +77,20 @@ export default function ThirtyDayChart({
   const fmtDateLabel = (iso: string) =>
     new Date(iso).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })
 
+  // Build the tooltip strings once per hover so the render below stays
+  // declarative. Done up here so we can also pre-measure widths.
+  const hovered = hoverIdx != null ? data[hoverIdx] : null
+  const hoveredXY = hoverIdx != null ? points[hoverIdx] : null
+  const hoverDate = hovered ? fmtDateLabel(hovered.date) : ''
+  const hoverValue = hovered
+    ? `${fmtInt(hovered.count)} ${unitNoun}${hovered.count === 1 ? '' : 's'}`
+    : ''
+  // Cheap width estimate — proportional to character count. The SVG
+  // scales to the container so a rough estimate is fine; we just need
+  // the rect wide enough that the longest of the two lines fits.
+  const tooltipW = Math.max(hoverDate.length, hoverValue.length) * 5.5 + 16
+  const tooltipH = 30
+
   return (
     <div className="bg-zinc-900 border border-zinc-800 rounded-xl overflow-hidden">
       <div className="px-4 md:px-5 py-3 border-b border-zinc-800 flex items-center justify-between gap-3">
@@ -80,6 +106,10 @@ export default function ThirtyDayChart({
           className="w-full h-32"
           preserveAspectRatio="none"
           aria-label={`${idKey} 30-day ${unitNoun} timeline`}
+          // Clearing on the svg means moving off the chart entirely
+          // dismisses the tooltip even if the cursor exits via a gap
+          // between hit-circles.
+          onMouseLeave={() => setHoverIdx(null)}
         >
           <defs>
             <linearGradient id={gradId} x1="0" y1="0" x2="0" y2="1">
@@ -89,29 +119,58 @@ export default function ThirtyDayChart({
           </defs>
           <path d={areaPath} fill={`url(#${gradId})`} />
           <path d={linePath} fill="none" stroke="#3B9EE8" strokeWidth="2" strokeLinejoin="round" strokeLinecap="round" />
+
+          {/* Visible dots — full brightness on real activity, faint marker on
+              zero days so the day still has a target you can hover. Highlight
+              ring on the currently-hovered point. */}
           {data.map((d, i) => {
             const [cx, cy] = points[i]
-            // Visible dot — full brightness on real activity, faint marker on
-            // zero days so the day still has a target you can hover.
-            const r = d.count > 0 ? 2.5 : 1.25
-            const op = d.count > 0 ? 1 : 0.35
+            const isActive = i === hoverIdx
+            const r = isActive ? 3.5 : d.count > 0 ? 2.5 : 1.25
+            const op = d.count > 0 || isActive ? 1 : 0.35
             return (
-              <g key={i}>
-                <circle cx={cx} cy={cy} r={r} fill="#3B9EE8" opacity={op} />
-                {/* Generous invisible hit target so the dot is hoverable
-                    even on small bumps where the visible circle is tiny. */}
-                <circle cx={cx} cy={cy} r="9" fill="transparent" className="cursor-help">
-                  <title>
-                    {fmtDateLabel(d.date)}: {fmtInt(d.count)} {unitNoun}
-                    {d.count === 1 ? '' : 's'}
-                  </title>
-                </circle>
-              </g>
+              <circle
+                key={`dot-${i}`}
+                cx={cx}
+                cy={cy}
+                r={r}
+                fill="#3B9EE8"
+                opacity={op}
+                pointerEvents="none"
+              />
             )
           })}
+
+          {/* Hit targets — separate pass so they all sit above the dots
+              and tooltip line for the entire row, and never get masked
+              by the line / area paths. */}
+          {data.map((d, i) => {
+            const [cx, cy] = points[i]
+            return (
+              <circle
+                key={`hit-${i}`}
+                cx={cx}
+                cy={cy}
+                r="10"
+                fill="transparent"
+                // No special cursor — the live tooltip is its own
+                // affordance, and the previous cursor-help (arrow with
+                // a `?`) was a leftover from the native-<title> era.
+                onMouseEnter={() => setHoverIdx(i)}
+                onTouchStart={(e) => {
+                  // Mobile: tap-to-show. Prevent the synthetic mouse
+                  // event so we don't get a re-fire that confuses state
+                  // on tap-twice-to-dismiss.
+                  e.preventDefault()
+                  setHoverIdx(i === hoverIdx ? null : i)
+                }}
+              />
+            )
+          })}
+
           {labelIdxs.map((i) => (
             <text
-              key={i}
+              key={`xlabel-${i}`}
               x={xScale(i)}
               y={H - 8}
               fontSize="10"
@@ -121,6 +180,70 @@ export default function ThirtyDayChart({
               {fmtDateLabel(data[i].date)}
             </text>
           ))}
+
+          {/* Tooltip — rendered last so it sits above everything else.
+              Positioned above the hovered dot, with the rect clamped to
+              the viewBox bounds so it doesn't get cut off at the edges. */}
+          {hovered && hoveredXY && (
+            <g pointerEvents="none">
+              {/* Vertical guide from the dot up to the tooltip's bottom edge. */}
+              <line
+                x1={hoveredXY[0]}
+                x2={hoveredXY[0]}
+                y1={hoveredXY[1]}
+                y2={Math.max(hoveredXY[1] - 14, PAD_TOP + tooltipH + 4)}
+                stroke="#52525b"
+                strokeWidth="1"
+                strokeDasharray="2 2"
+              />
+              {(() => {
+                // Centre the rect over the dot; clamp to the chart's
+                // horizontal padding so the tooltip never spills past
+                // the visible plot area.
+                const rectX = Math.max(
+                  PAD_X,
+                  Math.min(W - PAD_X - tooltipW, hoveredXY[0] - tooltipW / 2),
+                )
+                // Prefer above the dot. If the dot is very high (low Y),
+                // fall through and pin to the top padding band.
+                const rectY = Math.max(PAD_TOP, hoveredXY[1] - tooltipH - 8)
+                return (
+                  <>
+                    <rect
+                      x={rectX}
+                      y={rectY}
+                      width={tooltipW}
+                      height={tooltipH}
+                      rx={5}
+                      ry={5}
+                      fill="#18181b"
+                      stroke="#3f3f46"
+                      strokeWidth="1"
+                    />
+                    <text
+                      x={rectX + tooltipW / 2}
+                      y={rectY + 12}
+                      fontSize="9"
+                      fill="#a1a1aa"
+                      textAnchor="middle"
+                    >
+                      {hoverDate}
+                    </text>
+                    <text
+                      x={rectX + tooltipW / 2}
+                      y={rectY + 24}
+                      fontSize="10"
+                      fontWeight="600"
+                      fill="#ffffff"
+                      textAnchor="middle"
+                    >
+                      {hoverValue}
+                    </text>
+                  </>
+                )
+              })()}
+            </g>
+          )}
         </svg>
       </div>
     </div>

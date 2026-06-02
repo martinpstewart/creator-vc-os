@@ -1,7 +1,12 @@
-import { getCampaignStats, getCampaignsHistoricTotals } from '@/lib/supabase'
+import {
+  getCampaigns,
+  getCampaignStats,
+  getCampaignsHistoricTotals,
+} from '@/lib/supabase'
 import { getCurrentRole } from '@/lib/auth-server'
 import Link from 'next/link'
 import ClickableRow from '@/components/ClickableRow'
+import NewCampaignButton from '@/components/NewCampaignButton'
 
 export const dynamic = 'force-dynamic'
 
@@ -14,31 +19,42 @@ function fmt(n: number | string | null, currency = false) {
 }
 
 export default async function CampaignsPage() {
-  // Live (Shopify webhook) + historic (Gumroad/shopify_legacy/Wix CSVs)
-  // are aggregated separately at the DB layer; combine in JS so the
-  // list page matches the detail page's headline numbers.
+  // Three data sources, all aggregated separately at the DB layer:
+  //   - getCampaigns()                  → canonical list (id, name, legacy_code)
+  //   - getCampaignStats()              → live Shopify aggregation (only
+  //                                       campaigns with orders appear here)
+  //   - getCampaignsHistoricTotals()    → Gumroad / shopify_legacy / Wix
+  //
+  // We start from the canonical list so a freshly-created campaign with
+  // zero orders still appears (otherwise the stats RPC is the implicit
+  // gate on visibility, which is wrong now that users can create
+  // campaigns from the UI).
+  //
   // Role decides whether revenue columns appear at all — team/support
   // get backers + orders only.
-  const [liveStats, historicTotals, role] = await Promise.all([
+  const [allCampaigns, liveStats, historicTotals, role] = await Promise.all([
+    getCampaigns(),
     getCampaignStats(),
     getCampaignsHistoricTotals(),
     getCurrentRole(),
   ])
   const showRevenue = role === 'admin'
 
+  const liveById = new Map(liveStats.map((s) => [s.campaign_id, s]))
   const historicById = new Map(historicTotals.map((h) => [h.campaign_id, h]))
 
-  const rows = liveStats.map((c) => {
-    const h = historicById.get(c.campaign_id)
-    const live_revenue   = Number(c.total_spend ?? 0)
-    const live_orders    = Number(c.total_orders ?? 0)
-    const live_customers = Number(c.total_customers ?? 0)
+  const rows = allCampaigns.map((c) => {
+    const live = liveById.get(c.id)
+    const h = historicById.get(c.id)
+    const live_revenue   = Number(live?.total_spend ?? 0)
+    const live_orders    = Number(live?.total_orders ?? 0)
+    const live_customers = Number(live?.total_customers ?? 0)
     const h_revenue   = h ? Number(h.revenue) : 0
     const h_orders    = h ? Number(h.orders) : 0
     const h_customers = h ? Number(h.unique_customers) : 0
     return {
-      campaign_id: c.campaign_id,
-      campaign_name: c.campaign_name,
+      campaign_id: c.id,
+      campaign_name: c.name,
       revenue: live_revenue + h_revenue,
       orders: live_orders + h_orders,
       // Customer count sums per-source dedupes — slight over-count if a
@@ -49,17 +65,25 @@ export default async function CampaignsPage() {
     }
   })
 
+  // Sort: campaigns with activity first (by revenue desc), then empty
+  // ones at the bottom. New campaigns will sit at the foot until they
+  // pick up their first order.
+  rows.sort((a, b) => b.revenue - a.revenue || a.campaign_name.localeCompare(b.campaign_name))
+
   const totalRevenue = rows.reduce((s, r) => s + r.revenue, 0)
   const totalBackers = rows.reduce((s, r) => s + r.customers, 0)
 
   return (
     <div className="p-4 md:p-8">
-      <div className="mb-6 md:mb-8">
-        <h1 className="text-xl md:text-2xl font-semibold text-white">Campaigns</h1>
-        <p className="text-sm text-zinc-500 mt-1">
-          {rows.length} campaigns · {fmt(totalBackers)} total backers
-          {showRevenue && <> · {fmt(totalRevenue, true)} total revenue</>}
-        </p>
+      <div className="mb-6 md:mb-8 flex flex-col md:flex-row md:items-start md:justify-between gap-4">
+        <div>
+          <h1 className="text-xl md:text-2xl font-semibold text-white">Campaigns</h1>
+          <p className="text-sm text-zinc-500 mt-1">
+            {rows.length} campaigns · {fmt(totalBackers)} total backers
+            {showRevenue && <> · {fmt(totalRevenue, true)} total revenue</>}
+          </p>
+        </div>
+        <NewCampaignButton />
       </div>
 
       <div className="bg-zinc-900 border border-zinc-800 rounded-xl overflow-x-auto">

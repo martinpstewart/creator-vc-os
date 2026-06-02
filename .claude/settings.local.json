@@ -80,7 +80,19 @@
       "mcp__939dc0aa-4987-46bd-b0ab-e8625dcfcfb8__execute_sql",
       "mcp__939dc0aa-4987-46bd-b0ab-e8625dcfcfb8__get_project_url",
       "Bash(curl -sI https://creator-vc-os.vercel.app/tickets/14)",
-      "Bash(awk '{print $1}')"
+      "Bash(awk '{print $1}')",
+      "Bash(grep -E '\\(^|/\\)\\\\.env|\\\\.csv$|\\\\.xml$|\\\\.pem$|^node_modules/|^\\\\.next/|^\\\\.vercel/')",
+      "Bash(grep -iE 'secret|token|credential|\\\\.key$|\\\\.crt$')",
+      "Bash(git diff *)",
+      "Bash(grep -iE 'sb_\\(secret|publishable\\)_|SERVICE_ROLE_KEY *= *[\\\\\"'\\\\'']ey|password *= *[\\\\\"'\\\\''][^\\\\\"'\\\\''\\\\$]')",
+      "Bash(gh --version)",
+      "Bash(gh auth *)",
+      "Bash(git remote *)",
+      "Bash(main)",
+      "Bash(echo \"=== Push current worktree branch up as `main` on the remote ===\")",
+      "Bash(git push *)",
+      "Bash(git ls-remote *)",
+      "Bash(vercel deploy *)"
     ]
   }
 }
