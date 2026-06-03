@@ -3,27 +3,31 @@
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import Logo from '@/components/Logo'
-import { Eye, Users, Clapperboard, LogOut, Sparkles, Mail, Package, UserCog, Ticket } from 'lucide-react'
+import { Home, Users, Clapperboard, LogOut, Sparkles, Mail, Package, UserCog, Ticket } from 'lucide-react'
 import { useAuth } from './AuthProvider'
 import { canAccess, type Screen } from '@/lib/auth'
 import ThemeToggle from './ThemeToggle'
 
 // `screen` matches the ACCESS map in lib/auth.ts — hide an entry from a
 // role's nav and the middleware also blocks deep-linking to it.
+//
+// Order: Tickets sits under Customers (support flow), Catalogue under
+// Campaigns (product/campaign flow). Ask + Users live at the bottom —
+// power-user / admin surfaces below the day-to-day work.
 const nav: ReadonlyArray<{
   href: string
   label: string
-  Icon: typeof Eye
+  Icon: typeof Home
   screen: Screen
 }> = [
-  { href: '/', label: 'Dashboard', Icon: Eye, screen: 'dashboard' },
-  { href: '/customers', label: 'Customers', Icon: Users, screen: 'customers' },
+  { href: '/',          label: 'Dashboard', Icon: Home,         screen: 'dashboard' },
+  { href: '/customers', label: 'Customers', Icon: Users,        screen: 'customers' },
+  { href: '/tickets',   label: 'Tickets',   Icon: Ticket,       screen: 'tickets'   },
   { href: '/campaigns', label: 'Campaigns', Icon: Clapperboard, screen: 'campaigns' },
-  { href: '/tickets', label: 'Tickets', Icon: Ticket, screen: 'tickets' },
-  { href: '/query', label: 'Ask', Icon: Sparkles, screen: 'query' },
-  { href: '/marketing', label: 'Marketing', Icon: Mail, screen: 'marketing' },
-  { href: '/catalogue', label: 'Catalogue', Icon: Package, screen: 'catalogue' },
-  { href: '/users', label: 'Users', Icon: UserCog, screen: 'users' },
+  { href: '/catalogue', label: 'Catalogue', Icon: Package,      screen: 'catalogue' },
+  { href: '/marketing', label: 'Marketing', Icon: Mail,         screen: 'marketing' },
+  { href: '/query',     label: 'Ask',       Icon: Sparkles,     screen: 'query'     },
+  { href: '/users',     label: 'Users',     Icon: UserCog,      screen: 'users'     },
 ]
 
 export default function Sidebar({ onNavigate }: { onNavigate?: () => void } = {}) {

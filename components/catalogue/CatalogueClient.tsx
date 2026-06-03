@@ -1,6 +1,8 @@
 'use client'
 
 import { useState } from 'react'
+import { Package } from 'lucide-react'
+import type { Role } from '@/lib/auth'
 import ProductsManager from './ProductsManager'
 import InboxManager from './InboxManager'
 import type { Campaign, Product, Variant } from './types'
@@ -8,6 +10,7 @@ import type { Campaign, Product, Variant } from './types'
 type Tab = 'products' | 'inbox'
 
 export default function CatalogueClient({
+  role,
   campaigns,
   products,
   variants,
@@ -15,6 +18,7 @@ export default function CatalogueClient({
   pendingInboxCount,
   errors,
 }: {
+  role: Role
   campaigns: Campaign[]
   products: Product[]
   variants: Variant[]
@@ -39,12 +43,17 @@ export default function CatalogueClient({
 
   return (
     <div className="p-4 md:p-8">
-      <div className="mb-6 md:mb-8">
-        <h1 className="text-xl md:text-2xl font-semibold text-white">Catalogue</h1>
-        <p className="text-sm text-zinc-500 mt-1">
-          Products, variants and Shopify mappings. New Shopify variants land in the Inbox.
-        </p>
-      </div>
+      <header className="mb-6 md:mb-8 flex items-center gap-3">
+        <span className="inline-flex items-center justify-center w-9 h-9 md:w-10 md:h-10 rounded-lg bg-[#3B9EE8]">
+          <Package size={18} className="text-white" strokeWidth={2.25} />
+        </span>
+        <div>
+          <h1 className="text-xl md:text-2xl font-semibold text-white">Catalogue</h1>
+          <p className="text-sm text-zinc-500 mt-1">
+            Products, variants and Shopify mappings. New Shopify variants land in the Inbox.
+          </p>
+        </div>
+      </header>
 
       {/* Sub-tabs — pill style consistent with the campaign-detail tabs */}
       <div className="flex items-center gap-2 mb-6" role="tablist">
@@ -61,6 +70,7 @@ export default function CatalogueClient({
       <div role="tabpanel" hidden={tab !== 'products'}>
         {tab === 'products' && (
           <ProductsManager
+            role={role}
             campaigns={campaigns}
             products={products}
             variants={variants}

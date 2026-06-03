@@ -2,25 +2,25 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { Eye, Users, Clapperboard, Ticket, Mail } from 'lucide-react'
+import { Home, Users, Clapperboard, Ticket, Mail } from 'lucide-react'
 import { useAuth } from './AuthProvider'
 import { canAccess, type Screen } from '@/lib/auth'
 
 // Bottom nav stays at five entries max for thumb reach. `screen` keys
 // match lib/auth.ts so items disappear automatically for restricted roles.
-// Tickets bumps Ask off mobile — Ask is desktop-power-user UX and Tickets
-// is core staff workflow; admin still sees 5, team / support fewer.
+// Order mirrors the sidebar's: Customers → Tickets (support flow),
+// Campaigns → Marketing (campaign flow). Ask + Users are desktop-only.
 const items: ReadonlyArray<{
   href: string
   label: string
-  Icon: typeof Eye
+  Icon: typeof Home
   screen: Screen
 }> = [
-  { href: '/', label: 'Home', Icon: Eye, screen: 'dashboard' },
-  { href: '/customers', label: 'People', Icon: Users, screen: 'customers' },
+  { href: '/',          label: 'Home',      Icon: Home,         screen: 'dashboard' },
+  { href: '/customers', label: 'People',    Icon: Users,        screen: 'customers' },
+  { href: '/tickets',   label: 'Tickets',   Icon: Ticket,       screen: 'tickets'   },
   { href: '/campaigns', label: 'Campaigns', Icon: Clapperboard, screen: 'campaigns' },
-  { href: '/tickets', label: 'Tickets', Icon: Ticket, screen: 'tickets' },
-  { href: '/marketing', label: 'Marketing', Icon: Mail, screen: 'marketing' },
+  { href: '/marketing', label: 'Marketing', Icon: Mail,         screen: 'marketing' },
 ]
 
 export default function BottomNav() {

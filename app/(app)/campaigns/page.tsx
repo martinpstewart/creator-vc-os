@@ -6,6 +6,7 @@ import {
 } from '@/lib/supabase'
 import { getCurrentRole } from '@/lib/auth-server'
 import Link from 'next/link'
+import { Clapperboard } from 'lucide-react'
 import ClickableRow from '@/components/ClickableRow'
 import NewCampaignButton from '@/components/NewCampaignButton'
 
@@ -84,15 +85,20 @@ export default async function CampaignsPage() {
   return (
     <div className="p-4 md:p-8">
       <div className="mb-6 md:mb-8 flex flex-col md:flex-row md:items-start md:justify-between gap-4">
-        <div>
-          <h1 className="text-xl md:text-2xl font-semibold text-white">Campaigns</h1>
-          <p className="text-sm text-zinc-500 mt-1">
-            {rows.length} campaigns · {fmt(totalBackers)} unique backers
-            {showRevenue && <> · {fmt(totalRevenue, true)} total revenue</>}
-          </p>
-          {/* Cross-campaign buyers are counted in each campaign's row
-              below, so per-row backer counts can sum higher than the
-              unique total above. */}
+        <div className="flex items-center gap-3">
+          <span className="inline-flex items-center justify-center w-9 h-9 md:w-10 md:h-10 rounded-lg bg-[#3B9EE8] shrink-0">
+            <Clapperboard size={18} className="text-white" strokeWidth={2.25} />
+          </span>
+          <div>
+            <h1 className="text-xl md:text-2xl font-semibold text-white">Campaigns</h1>
+            <p className="text-sm text-zinc-500 mt-1">
+              {rows.length} campaigns · {fmt(totalBackers)} unique backers
+              {showRevenue && <> · {fmt(totalRevenue, true)} total revenue</>}
+            </p>
+            {/* Cross-campaign buyers are counted in each campaign's row
+                below, so per-row backer counts can sum higher than the
+                unique total above. */}
+          </div>
         </div>
         <NewCampaignButton />
       </div>

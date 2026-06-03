@@ -1,6 +1,7 @@
 import { getCustomers, getCampaigns } from '@/lib/supabase'
 import Link from 'next/link'
 import { Suspense } from 'react'
+import { Users } from 'lucide-react'
 import CampaignFilter from '@/components/CampaignFilter'
 import CustomerSearch from '@/components/CustomerSearch'
 import StoreFilter, { type StoreValue } from '@/components/StoreFilter'
@@ -56,14 +57,19 @@ export default async function CustomersPage({
   return (
     <div className="p-4 md:p-8">
       <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 mb-6">
-        <div>
-          <h1 className="text-xl md:text-2xl font-semibold text-white">Customers</h1>
-          {/* Number now reflects PAYING customers only — the
-              get_customers_list RPC filters on aa_02_crm.v_paying_customer_emails
-              by default. Non-paying contacts (Backerkit signups,
-              refund-only emails) are accessible by direct URL but
-              hidden from this listing. */}
-          <p className="text-sm text-zinc-500 mt-1">{fmt(total)} paying customers</p>
+        <div className="flex items-center gap-3">
+          <span className="inline-flex items-center justify-center w-9 h-9 md:w-10 md:h-10 rounded-lg bg-[#3B9EE8]">
+            <Users size={18} className="text-white" strokeWidth={2.25} />
+          </span>
+          <div>
+            <h1 className="text-xl md:text-2xl font-semibold text-white">Customers</h1>
+            {/* Number now reflects PAYING customers only — the
+                get_customers_list RPC filters on aa_02_crm.v_paying_customer_emails
+                by default. Non-paying contacts (Backerkit signups,
+                refund-only emails) are accessible by direct URL but
+                hidden from this listing. */}
+            <p className="text-sm text-zinc-500 mt-1">{fmt(total)} paying customers</p>
+          </div>
         </div>
         <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 sm:gap-3 flex-wrap">
           <Suspense>

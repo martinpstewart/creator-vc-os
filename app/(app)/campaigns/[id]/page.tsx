@@ -42,16 +42,30 @@ export default async function CampaignDetailPage({
   const campaignId = parseInt(id, 10)
   if (isNaN(campaignId)) notFound()
 
-  // Both of these are cached in the data layer — page shell paints fast.
-  // historic_breakdown adds Gumroad/shopify_legacy/Wix rollups that
-  // get_campaign_stats_v2 doesn't include yet.
-  // Role decides whether revenue tiles + columns render at all.
+  // Defensive: every per-RPC fetch falls back to an empty/null result
+  // instead of throwing the whole page into the error boundary. This
+  // is what /tickets does too — a single transient backend hiccup
+  // shouldn't blank the entire campaign detail. Failures are logged
+  // for diagnosis; the user sees a partially-populated page rather
+  // than "Something went wrong".
   const [allStats, unitsSoldLive, historicBreakdown, historicUnitsSold, role] =
     await Promise.all([
-      getCampaignStats(),
-      getCampaignUnitsSold(campaignId),
-      getCampaignHistoricBreakdown(campaignId),
-      getCampaignHistoricUnitsSold(campaignId),
+      getCampaignStats().catch((e) => {
+        console.error('[campaigns/[id]] getCampaignStats failed', e)
+        return []
+      }),
+      getCampaignUnitsSold(campaignId).catch((e) => {
+        console.error('[campaigns/[id]] getCampaignUnitsSold failed', e)
+        return []
+      }),
+      getCampaignHistoricBreakdown(campaignId).catch((e): HistoricBreakdownRow[] => {
+        console.error('[campaigns/[id]] getCampaignHistoricBreakdown failed', e)
+        return []
+      }),
+      getCampaignHistoricUnitsSold(campaignId).catch((e) => {
+        console.error('[campaigns/[id]] getCampaignHistoricUnitsSold failed', e)
+        return []
+      }),
       getCurrentRole(),
     ])
   const showRevenue = role === 'admin'

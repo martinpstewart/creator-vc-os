@@ -1,4 +1,5 @@
 import { createClient } from '@/lib/supabase-server'
+import { getCurrentRole } from '@/lib/auth-server'
 import CatalogueClient from '@/components/catalogue/CatalogueClient'
 import type { Campaign, Product, Variant } from '@/components/catalogue/types'
 
@@ -13,6 +14,13 @@ const VARIANT_COLS = 'id, campaign_id, product_id, name:"Name", legacy_code, def
 
 export default async function CataloguePage() {
   const supabase = await createClient()
+  // Role decides delete-button visibility — admin sees Trash2 buttons,
+  // team gets read + create + update only (CRU not D). Enforced in the
+  // UI per the role rule; underlying products/variants tables remain
+  // server-writable for any authenticated user, so this is a UX
+  // boundary not a security one. DB-level enforcement (RLS or a
+  // SECURITY DEFINER delete RPC gated on admin) would be a follow-up.
+  const role = await getCurrentRole()
 
   const [campaignsRes, productsRes, variantsRes, inboxCountRes, mapRes] = await Promise.all([
     supabase.schema('aa_01_campaigns').from('campaigns').select(CAMPAIGN_COLS).order('id'),
@@ -38,6 +46,7 @@ export default async function CataloguePage() {
 
   return (
     <CatalogueClient
+      role={role}
       campaigns={(campaignsRes.data ?? []) as Campaign[]}
       products={(productsRes.data ?? []) as Product[]}
       variants={(variantsRes.data ?? []) as Variant[]}

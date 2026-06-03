@@ -102,15 +102,17 @@ export const getCampaignStats = unstable_cache(
   () =>
     withRetry(async () => {
       // v3 is the canonical paying-customer source — per-campaign
-      // distinct-email counts and order counts come from
-      // aa_02_crm.v_campaign_paying_emails so every screen + Ask agree.
-      // v2 is kept on the DB for backwards-compat audit; drop later
-      // once nothing calls it.
+      // distinct-email counts come from the same gating logic as
+      // get_campaign_backer_list_combined, so the campaigns list,
+      // campaign detail tile, and Ask "paid_backers_for_campaign"
+      // template all agree. v3 was rewritten in the hotfix migration
+      // (20260603120000) to inline its logic instead of going through
+      // the v_campaign_paying_emails view, which was too slow.
       const { data, error } = await supabase.rpc('get_campaign_stats_v3')
       if (error) throw error
       return (data ?? []) as CampaignStatRow[]
     }, 'getCampaignStats'),
-  ['campaign-stats-v5'],
+  ['campaign-stats-v7'],
   { revalidate: 60, tags: ['campaign-stats'] }
 )
 

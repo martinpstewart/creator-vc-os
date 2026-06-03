@@ -24,13 +24,15 @@ export type Screen =
   | 'users'
   | 'tickets'
 
-// Single source of truth for screen access. `query`, `catalogue` and `users`
-// aren't in the original spec matrix — `query` and `catalogue` are
-// power-user surfaces (NL SQL, product master), `users` is the admin CRUD.
-// `tickets` is staff-wide — admin + team + support all need it.
+// Single source of truth for screen access. `query` (Ask / NL SQL) and
+// `users` (Auth admin) stay admin-only. Catalogue is now team-visible
+// with read + create + update on products/variants; delete is gated
+// in the UI (ProductsManager hides the Trash2 buttons for non-admin)
+// and `users` is the admin CRUD. `tickets` is staff-wide — admin + team
+// + support all need it.
 export const ACCESS: Record<Role, ReadonlyArray<Screen>> = {
   admin: ['dashboard', 'campaigns', 'customers', 'marketing', 'query', 'catalogue', 'users', 'tickets'],
-  team: ['campaigns', 'customers', 'marketing', 'tickets'],
+  team: ['campaigns', 'customers', 'marketing', 'tickets', 'catalogue'],
   support: ['customers', 'tickets'],
 }
 

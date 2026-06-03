@@ -2,6 +2,7 @@
 
 import { useState, useTransition } from 'react'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
+import { Mail } from 'lucide-react'
 import EmailsManager from './EmailsManager'
 import ContactsManager from './ContactsManager'
 import LandingPagesManager from './LandingPagesManager'
@@ -43,11 +44,16 @@ export default function MarketingPageClient({
   return (
     <div className="p-4 md:p-8">
       <div className="flex items-center justify-between mb-6 md:mb-8 gap-3">
-        <div>
-          <h1 className="text-xl md:text-2xl font-semibold text-white">Marketing</h1>
-          <p className="text-sm text-zinc-500 mt-1">
-            Emails, contacts, segments and landing pages — all in one place
-          </p>
+        <div className="flex items-center gap-3">
+          <span className="inline-flex items-center justify-center w-9 h-9 md:w-10 md:h-10 rounded-lg bg-[#3B9EE8]">
+            <Mail size={18} className="text-white" strokeWidth={2.25} />
+          </span>
+          <div>
+            <h1 className="text-xl md:text-2xl font-semibold text-white">Marketing</h1>
+            <p className="text-sm text-zinc-500 mt-1">
+              Emails, contacts, segments and landing pages — all in one place
+            </p>
+          </div>
         </div>
       </div>
 

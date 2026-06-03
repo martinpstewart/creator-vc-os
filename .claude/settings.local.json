@@ -93,7 +93,12 @@
       "Bash(git push *)",
       "Bash(git ls-remote *)",
       "Bash(vercel deploy *)",
-      "Bash(npx supabase *)"
+      "Bash(npx supabase *)",
+      "Read(//private/tmp/**)",
+      "Bash(supabase db *)",
+      "Bash(PGPASSWORD=\"\" supabase db dump --help)",
+      "Bash(supabase projects *)",
+      "Bash(supabase link *)"
     ]
   }
 }

@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { ChevronDown, ChevronRight, Plus, Pencil, Trash2, X } from 'lucide-react'
 import { createClient } from '@/lib/supabase-browser'
+import type { Role } from '@/lib/auth'
 import type { Campaign, Product, Variant } from './types'
 
 type EditMode =
@@ -14,21 +15,31 @@ type EditMode =
   | { type: 'edit-variant'; variant: Variant }
 
 export default function ProductsManager({
+  role,
   campaigns,
   products,
   variants,
   mappedLegacyCodes,
 }: {
+  role: Role
   campaigns: Campaign[]
   products: Product[]
   variants: Variant[]
   mappedLegacyCodes: Set<string>
 }) {
   const router = useRouter()
-  const [expanded, setExpanded] = useState<Set<number>>(new Set(campaigns.map((c) => c.id)))
+  // All campaigns start collapsed. Previously we eagerly expanded every
+  // campaign in the list, which made the page noisy as the campaign
+  // catalogue grew — Robin's view ran several screens tall before the
+  // user could orient. Empty Set → user clicks to drill in.
+  const [expanded, setExpanded] = useState<Set<number>>(new Set())
   const [edit, setEdit] = useState<EditMode>(null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
+
+  // Delete is admin-only per the CRU-not-D rule. Team users see the
+  // accordion + edit pencils but no Trash2 buttons.
+  const canDelete = role === 'admin'
 
   function toggle(id: number) {
     setExpanded((prev) => {
@@ -136,6 +147,7 @@ export default function ProductsManager({
                       variants={variants.filter((v) => v.product_id === p.id)}
                       mappedLegacyCodes={mappedLegacyCodes}
                       busy={busy}
+                      canDelete={canDelete}
                       onEditProduct={() => setEdit({ type: 'edit-product', product: p })}
                       onDeleteProduct={() => deleteProduct(p)}
                       onAddVariant={() => setEdit({ type: 'new-variant', campaignId: p.campaign_id, productId: p.id })}
@@ -171,6 +183,7 @@ function ProductBlock({
   variants,
   mappedLegacyCodes,
   busy,
+  canDelete,
   onEditProduct,
   onDeleteProduct,
   onAddVariant,
@@ -181,6 +194,7 @@ function ProductBlock({
   variants: Variant[]
   mappedLegacyCodes: Set<string>
   busy: boolean
+  canDelete: boolean
   onEditProduct: () => void
   onDeleteProduct: () => void
   onAddVariant: () => void
@@ -221,14 +235,16 @@ function ProductBlock({
           >
             <Pencil size={14} />
           </button>
-          <button
-            onClick={onDeleteProduct}
-            disabled={busy}
-            className="p-1.5 rounded-md text-zinc-500 hover:text-red-400 hover:bg-red-950/40 transition-colors disabled:opacity-50"
-            title="Delete product"
-          >
-            <Trash2 size={14} />
-          </button>
+          {canDelete && (
+            <button
+              onClick={onDeleteProduct}
+              disabled={busy}
+              className="p-1.5 rounded-md text-zinc-500 hover:text-red-400 hover:bg-red-950/40 transition-colors disabled:opacity-50"
+              title="Delete product"
+            >
+              <Trash2 size={14} />
+            </button>
+          )}
         </div>
       </div>
       {variants.length > 0 && (
@@ -260,13 +276,15 @@ function ProductBlock({
                       >
                         <Pencil size={12} />
                       </button>
-                      <button
-                        onClick={() => onDeleteVariant(v)}
-                        disabled={busy}
-                        className="p-1 rounded-md text-zinc-500 hover:text-red-400 hover:bg-red-950/40 transition-colors disabled:opacity-50"
-                      >
-                        <Trash2 size={12} />
-                      </button>
+                      {canDelete && (
+                        <button
+                          onClick={() => onDeleteVariant(v)}
+                          disabled={busy}
+                          className="p-1 rounded-md text-zinc-500 hover:text-red-400 hover:bg-red-950/40 transition-colors disabled:opacity-50"
+                        >
+                          <Trash2 size={12} />
+                        </button>
+                      )}
                     </div>
                   </td>
                 </tr>
