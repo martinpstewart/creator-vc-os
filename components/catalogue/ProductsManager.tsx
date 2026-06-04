@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { ChevronDown, ChevronRight, Plus, Pencil, Trash2, X } from 'lucide-react'
+import { ChevronDown, ChevronRight, Plus, Pencil, Trash2, Copy, X } from 'lucide-react'
 import { createClient } from '@/lib/supabase-browser'
 import type { Role } from '@/lib/auth'
 import type { Campaign, Product, Variant } from './types'
@@ -11,6 +11,7 @@ type EditMode =
   | null
   | { type: 'new-product'; campaignId: number }
   | { type: 'edit-product'; product: Product }
+  | { type: 'clone-product'; campaignId: number }
   | { type: 'new-variant'; campaignId: number; productId: number }
   | { type: 'edit-variant'; variant: Variant }
 
@@ -123,16 +124,33 @@ export default function ProductsManager({
                   </p>
                 </div>
               </div>
-              <span
-                onClick={(e) => {
-                  e.stopPropagation()
-                  setEdit({ type: 'new-product', campaignId: campaign.id })
-                }}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-md bg-[#3B9EE8] text-white hover:bg-[#2d8ed8] transition-colors cursor-pointer"
-              >
-                <Plus size={14} />
-                Product
-              </span>
+              <div className="flex items-center gap-1.5">
+                {/* Clone an existing product (from any campaign) into
+                    this one. Useful for reusing merch SKUs that ship
+                    across multiple campaigns. Variants must be added
+                    separately after cloning. */}
+                <span
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    setEdit({ type: 'clone-product', campaignId: campaign.id })
+                  }}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md bg-zinc-800 text-zinc-200 hover:bg-zinc-700 transition-colors cursor-pointer"
+                  title="Clone an existing product into this campaign"
+                >
+                  <Copy size={13} />
+                  Clone
+                </span>
+                <span
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    setEdit({ type: 'new-product', campaignId: campaign.id })
+                  }}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-md bg-[#3B9EE8] text-white hover:bg-[#2d8ed8] transition-colors cursor-pointer"
+                >
+                  <Plus size={14} />
+                  Product
+                </span>
+              </div>
             </button>
 
             {isOpen && (
@@ -210,9 +228,6 @@ function ProductBlock({
           <div className="flex flex-wrap gap-2 mt-2">
             {product.requires_address && (
               <span className="text-[10px] uppercase tracking-wide font-medium px-1.5 py-0.5 rounded bg-zinc-800 text-zinc-400">Ships</span>
-            )}
-            {product.ships_separately && (
-              <span className="text-[10px] uppercase tracking-wide font-medium px-1.5 py-0.5 rounded bg-zinc-800 text-zinc-400">Separate</span>
             )}
           </div>
           {product.notes && <p className="text-xs text-zinc-500 mt-2 italic">{product.notes}</p>}
@@ -312,6 +327,7 @@ function EditDrawer({
   onSaved: () => void
 }) {
   const isProduct = mode.type === 'new-product' || mode.type === 'edit-product'
+  const isClone = mode.type === 'clone-product'
   const isVariant = mode.type === 'new-variant' || mode.type === 'edit-variant'
 
   const title =
@@ -319,6 +335,8 @@ function EditDrawer({
       ? 'New product'
       : mode.type === 'edit-product'
       ? 'Edit product'
+      : mode.type === 'clone-product'
+      ? 'Clone existing product'
       : mode.type === 'new-variant'
       ? 'New variant'
       : 'Edit variant'
@@ -342,6 +360,14 @@ function EditDrawer({
                   ? mode.product
                   : { campaign_id: (mode as { campaignId: number }).campaignId }
               }
+              onSaved={onSaved}
+            />
+          )}
+          {isClone && (
+            <CloneProductForm
+              campaigns={campaigns}
+              products={products}
+              targetCampaignId={(mode as { campaignId: number }).campaignId}
               onSaved={onSaved}
             />
           )}
@@ -378,7 +404,6 @@ function ProductForm({
   const [legacy, setLegacy] = useState(initial.legacy_code ?? '')
   const [campaignId, setCampaignId] = useState(initial.campaign_id)
   const [requiresAddress, setRequiresAddress] = useState(initial.requires_address ?? true)
-  const [shipsSeparately, setShipsSeparately] = useState(initial.ships_separately ?? false)
   const [notes, setNotes] = useState(initial.notes ?? '')
   const [saving, setSaving] = useState(false)
   const [err, setErr] = useState<string | null>(null)
@@ -393,7 +418,6 @@ function ProductForm({
         Name: name.trim(),
         legacy_code: legacy.trim(),
         requires_address: requiresAddress,
-        ships_separately: shipsSeparately,
         notes: notes.trim() || null,
       }
       if (initial.id) {
@@ -432,7 +456,6 @@ function ProductForm({
       </Field>
       <div className="flex items-center gap-4">
         <Toggle label="Requires shipping address" checked={requiresAddress} onChange={setRequiresAddress} />
-        <Toggle label="Ships separately" checked={shipsSeparately} onChange={setShipsSeparately} />
       </div>
       <Field label="Notes (optional)">
         <textarea value={notes ?? ''} onChange={(e) => setNotes(e.target.value)} rows={2} className={inputCls} />
@@ -559,5 +582,128 @@ function Toggle({ label, checked, onChange }: { label: string; checked: boolean;
       <input type="checkbox" checked={checked} onChange={(e) => onChange(e.target.checked)} className="rounded border-zinc-700 bg-zinc-900" />
       {label}
     </label>
+  )
+}
+
+// Clone an existing product (from any campaign) into the destination
+// campaign. UI flow: pick a source product → see its details read-only
+// → type a new globally-unique SKU → submit. Variants are NOT cloned
+// in this v1; user adds them separately via the existing "Add Variant"
+// affordance on the new product row.
+function CloneProductForm({
+  campaigns,
+  products,
+  targetCampaignId,
+  onSaved,
+}: {
+  campaigns: Campaign[]
+  products: Product[]
+  targetCampaignId: number
+  onSaved: () => void
+}) {
+  // Source candidates: every existing product EXCEPT the ones already
+  // in the destination campaign (cloning into the same campaign would
+  // be confusing — and the UNIQUE (campaign_id, legacy_code) constraint
+  // would refuse most attempts anyway).
+  const candidates = products.filter((p) => p.campaign_id !== targetCampaignId)
+  const campaignName = (id: number) => campaigns.find((c) => c.id === id)?.name ?? '—'
+
+  const [sourceId, setSourceId] = useState<number | null>(candidates[0]?.id ?? null)
+  const [newSku, setNewSku] = useState('')
+  const [saving, setSaving] = useState(false)
+  const [err, setErr] = useState<string | null>(null)
+
+  const source = sourceId == null ? null : candidates.find((p) => p.id === sourceId) ?? null
+
+  async function save() {
+    setSaving(true)
+    setErr(null)
+    if (!source) {
+      setErr('Pick a source product to clone.')
+      setSaving(false)
+      return
+    }
+    const supabase = createClient()
+    const { error } = await supabase.rpc('clone_product_into_campaign', {
+      p_source_product_id: source.id,
+      p_target_campaign_id: targetCampaignId,
+      p_new_legacy_code: newSku.trim(),
+    })
+    setSaving(false)
+    if (error) {
+      // The RPC raises specific codes — 22023 (missing/invalid input),
+      // 23505 (legacy_code already exists), 42501 (forbidden). The raw
+      // message is human-readable in each case.
+      setErr(error.message)
+      return
+    }
+    onSaved()
+  }
+
+  if (candidates.length === 0) {
+    return (
+      <p className="text-xs text-zinc-500">
+        No other products exist yet — create one from scratch, then clone from there next time.
+      </p>
+    )
+  }
+
+  return (
+    <div className="space-y-5">
+      <p className="text-[11px] text-zinc-500">
+        Cloning into <span className="text-zinc-300 font-medium">{campaignName(targetCampaignId)}</span>. Variants
+        aren&rsquo;t carried over — add them after cloning via the &ldquo;Variant&rdquo; button on the new product.
+      </p>
+
+      <Field label="Source product">
+        <select
+          value={sourceId ?? ''}
+          onChange={(e) => setSourceId(e.target.value ? Number(e.target.value) : null)}
+          className="w-full bg-zinc-900 border border-zinc-800 rounded-md px-3 py-2 text-sm text-white"
+        >
+          {candidates.map((p) => (
+            <option key={p.id} value={p.id}>
+              {p.name} · {p.legacy_code} — {campaignName(p.campaign_id)}
+            </option>
+          ))}
+        </select>
+      </Field>
+
+      {source && (
+        <div className="bg-zinc-900 border border-zinc-800 rounded-md px-3 py-3 space-y-1">
+          <p className="text-[10px] uppercase tracking-wide text-zinc-500 font-medium">Will copy:</p>
+          <p className="text-xs text-zinc-300"><span className="text-zinc-500">Name:</span> {source.name}</p>
+          <p className="text-xs text-zinc-300"><span className="text-zinc-500">Requires address:</span> {source.requires_address ? 'Yes' : 'No'}</p>
+          {source.notes && (
+            <p className="text-xs text-zinc-300 italic"><span className="text-zinc-500 not-italic">Notes:</span> {source.notes}</p>
+          )}
+        </div>
+      )}
+
+      <Field label="New SKU (legacy code)">
+        <input
+          type="text"
+          value={newSku}
+          onChange={(e) => setNewSku(e.target.value)}
+          placeholder="e.g. ALIENS-MUG"
+          required
+          className={inputCls}
+        />
+        <p className="text-[10px] text-zinc-600 mt-1">
+          Must be globally unique. The source&rsquo;s SKU{' '}
+          {source && <span className="font-mono text-zinc-400">{source.legacy_code}</span>} can&rsquo;t be reused.
+        </p>
+      </Field>
+
+      {err && <p className="text-xs text-red-400">{err}</p>}
+
+      <button
+        onClick={save}
+        disabled={saving || !source || !newSku.trim()}
+        className="w-full px-4 py-2.5 text-sm font-bold rounded-md bg-[#3B9EE8] text-white hover:bg-[#2d8ed8] disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+      >
+        {saving ? 'Cloning…' : 'Clone product'}
+      </button>
+    </div>
   )
 }

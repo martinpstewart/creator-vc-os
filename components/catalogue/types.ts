@@ -10,7 +10,6 @@ export type Product = {
   name: string
   legacy_code: string
   requires_address: boolean
-  ships_separately: boolean
   notes: string | null
 }
 

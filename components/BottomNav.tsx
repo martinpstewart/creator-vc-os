@@ -2,14 +2,15 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { Home, Users, Clapperboard, Ticket, Mail } from 'lucide-react'
+import { Home, Users, Clapperboard, Ticket, Mail, Package } from 'lucide-react'
 import { useAuth } from './AuthProvider'
 import { canAccess, type Screen } from '@/lib/auth'
 
-// Bottom nav stays at five entries max for thumb reach. `screen` keys
-// match lib/auth.ts so items disappear automatically for restricted roles.
-// Order mirrors the sidebar's: Customers → Tickets (support flow),
-// Campaigns → Marketing (campaign flow). Ask + Users are desktop-only.
+// Bottom nav mirrors the sidebar — every screen the user has access to
+// shows up on mobile too. `screen` keys match lib/auth.ts so entries
+// disappear automatically when a role can't access them (admin sees 6,
+// team sees 5, support sees 2). Ask + Users are deliberately desktop-
+// only — power-user / admin surfaces that don't suit thumb taps.
 const items: ReadonlyArray<{
   href: string
   label: string
@@ -17,9 +18,10 @@ const items: ReadonlyArray<{
   screen: Screen
 }> = [
   { href: '/',          label: 'Home',      Icon: Home,         screen: 'dashboard' },
-  { href: '/customers', label: 'People',    Icon: Users,        screen: 'customers' },
+  { href: '/customers', label: 'Customers', Icon: Users,        screen: 'customers' },
   { href: '/tickets',   label: 'Tickets',   Icon: Ticket,       screen: 'tickets'   },
   { href: '/campaigns', label: 'Campaigns', Icon: Clapperboard, screen: 'campaigns' },
+  { href: '/catalogue', label: 'Catalogue', Icon: Package,      screen: 'catalogue' },
   { href: '/marketing', label: 'Marketing', Icon: Mail,         screen: 'marketing' },
 ]
 

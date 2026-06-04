@@ -9,7 +9,7 @@ export const dynamic = 'force-dynamic'
 // case-sensitive on identifiers, so we alias to lowercase `name` for the
 // JS side — keeps the client component clean.
 const CAMPAIGN_COLS = 'id, name:"Name", legacy_code'
-const PRODUCT_COLS = 'id, campaign_id, name:"Name", legacy_code, requires_address, ships_separately, notes'
+const PRODUCT_COLS = 'id, campaign_id, name:"Name", legacy_code, requires_address, notes'
 const VARIANT_COLS = 'id, campaign_id, product_id, name:"Name", legacy_code, default_price, currency, source_type'
 
 export default async function CataloguePage() {
