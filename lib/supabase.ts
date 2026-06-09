@@ -169,6 +169,10 @@ export async function getCustomerCampaignOrders(email: string, campaignId: numbe
       quantity: number
       price_paid: number | null
       order_id: string
+      // Human-readable identifier per source: shopify_order_number for
+      // Shopify, purchase_order_number for ISOD, falls back to
+      // shopify_order_id on the entitlement path (no friendlier value).
+      order_number: string | null
       purchase_type: string
     }[]
   }, 'getCustomerCampaignOrders')

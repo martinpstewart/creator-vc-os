@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase-browser'
+import { formatErrorMessage } from '@/lib/format-error'
 import type { Campaign, Product, Variant, InboxRow } from './types'
 
 type ActionMode =
@@ -76,7 +77,7 @@ export default function InboxManager({
       setRows((prev) => (prev ? prev.filter((r) => r.id !== row.id) : prev))
       router.refresh()
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e))
+      setError(formatErrorMessage(e))
     } finally {
       setBusyId(null)
     }
@@ -288,7 +289,7 @@ function MatchDrawer({
       if (iErr) throw iErr
       onResolved(row.id)
     } catch (e) {
-      setErr(e instanceof Error ? e.message : String(e))
+      setErr(formatErrorMessage(e))
     } finally {
       setSaving(false)
     }
@@ -430,7 +431,7 @@ function CreateDrawer({
       if (iErr) throw iErr
       onResolved(row.id)
     } catch (e) {
-      setErr(e instanceof Error ? e.message : String(e))
+      setErr(formatErrorMessage(e))
     } finally {
       setSaving(false)
     }

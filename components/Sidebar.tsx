@@ -3,9 +3,9 @@
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import Logo from '@/components/Logo'
-import { Home, Users, Clapperboard, LogOut, Sparkles, Mail, Package, UserCog, Ticket } from 'lucide-react'
+import { Home, Users, Clapperboard, LogOut, Sparkles, Mail, Package, UserCog, Ticket, Settings } from 'lucide-react'
 import { useAuth } from './AuthProvider'
-import { canAccess, type Screen } from '@/lib/auth'
+import { canAccess, isOwner, type Screen } from '@/lib/auth'
 import ThemeToggle from './ThemeToggle'
 
 // `screen` matches the ACCESS map in lib/auth.ts — hide an entry from a
@@ -28,18 +28,26 @@ const nav: ReadonlyArray<{
   { href: '/marketing', label: 'Marketing', Icon: Mail,         screen: 'marketing' },
   { href: '/query',     label: 'Ask',       Icon: Sparkles,     screen: 'query'     },
   { href: '/users',     label: 'Users',     Icon: UserCog,      screen: 'users'     },
+  { href: '/settings',  label: 'Settings',  Icon: Settings,     screen: 'settings'  },
 ]
 
 export default function Sidebar({ onNavigate }: { onNavigate?: () => void } = {}) {
   const pathname = usePathname()
-  const { role, signOut } = useAuth()
+  const { role, signOut, user } = useAuth()
 
   async function handleSignOut() {
     onNavigate?.()
     await signOut()
   }
 
-  const visible = nav.filter((item) => canAccess(role, item.screen))
+  // Two-stage filter: role gate (canAccess) plus the owner check for
+  // Martin-only screens. Settings is the only owner-scoped entry today,
+  // so a single guard covers it; if more get added later, switch this
+  // to a Set / metadata table.
+  const ownerEmail = isOwner(user?.email)
+  const visible = nav.filter(
+    (item) => canAccess(role, item.screen) && (item.screen !== 'settings' || ownerEmail),
+  )
 
   return (
     <aside className="w-56 h-full shrink-0 bg-zinc-900 border-r border-zinc-800 flex flex-col">

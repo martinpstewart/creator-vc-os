@@ -26,7 +26,12 @@ type OrderLine = {
   variant_name: string | null
   quantity: number
   price_paid: number | null
+  // order_id is the internal/long ref (Shopify GID, ISOD internal id).
+  // order_number is the human-readable one we render — shopify_order_number
+  // for Shopify, purchase_order_number for ISOD. Falls back to order_id
+  // for entitlement-path rows where no friendlier value exists.
   order_id: string
+  order_number: string | null
   purchase_type: string
 }
 
@@ -36,6 +41,12 @@ function fmt(n: number | string | null, currency = false) {
   if (isNaN(num)) return '—'
   if (currency) return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 2 }).format(num)
   return new Intl.NumberFormat('en-US').format(num)
+}
+
+// Prefer the human-readable order_number; fall back to order_id if
+// the RPC returned no friendlier value (entitlement-path rows).
+function displayOrderRef(line: OrderLine): string {
+  return line.order_number?.trim() || line.order_id
 }
 
 function OrdersTable({ lines }: { lines: OrderLine[] }) {
@@ -51,7 +62,7 @@ function OrdersTable({ lines }: { lines: OrderLine[] }) {
         <thead>
           <tr className="border-b border-zinc-800/50">
             <th className="text-left px-8 py-2 text-zinc-500 font-medium">SKU</th>
-            <th className="text-left px-4 py-2 text-zinc-500 font-medium">Order Ref</th>
+            <th className="text-left px-4 py-2 text-zinc-500 font-medium">Order #</th>
             <th className="text-right px-6 py-2 text-zinc-500 font-medium">Price</th>
           </tr>
         </thead>
@@ -59,7 +70,7 @@ function OrdersTable({ lines }: { lines: OrderLine[] }) {
           {lines.map((line, i) => (
             <tr key={i} className="border-b border-zinc-800/30 last:border-0">
               <td className="px-8 py-2.5 font-mono text-zinc-300">{line.product_name}</td>
-              <td className="px-4 py-2.5 text-zinc-500">{line.order_id}</td>
+              <td className="px-4 py-2.5 font-mono text-zinc-500">{displayOrderRef(line)}</td>
               <td className="px-6 py-2.5 text-right text-zinc-300">
                 {line.price_paid !== null ? fmt(line.price_paid, true) : '—'}
               </td>
@@ -76,6 +87,7 @@ function OrdersTable({ lines }: { lines: OrderLine[] }) {
         <tr className="border-b border-zinc-800/50">
           <th className="text-left px-8 py-2 text-zinc-500 font-medium">Product</th>
           <th className="text-left px-4 py-2 text-zinc-500 font-medium">Variant</th>
+          <th className="text-left px-4 py-2 text-zinc-500 font-medium">Order #</th>
           <th className="text-right px-4 py-2 text-zinc-500 font-medium">Qty</th>
           <th className="text-right px-6 py-2 text-zinc-500 font-medium">Price</th>
         </tr>
@@ -85,6 +97,7 @@ function OrdersTable({ lines }: { lines: OrderLine[] }) {
           <tr key={i} className="border-b border-zinc-800/30 last:border-0">
             <td className="px-8 py-2.5 text-zinc-300">{line.product_name}</td>
             <td className="px-4 py-2.5 text-zinc-500">{line.variant_name || '—'}</td>
+            <td className="px-4 py-2.5 font-mono text-zinc-500">{displayOrderRef(line)}</td>
             <td className="px-4 py-2.5 text-right text-zinc-400">{line.quantity}</td>
             <td className="px-6 py-2.5 text-right text-zinc-300">
               {line.price_paid !== null ? fmt(line.price_paid, true) : '—'}

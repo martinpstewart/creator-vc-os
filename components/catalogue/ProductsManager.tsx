@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { ChevronDown, ChevronRight, Plus, Pencil, Trash2, Copy, X } from 'lucide-react'
 import { createClient } from '@/lib/supabase-browser'
+import { formatErrorMessage } from '@/lib/format-error'
 import type { Role } from '@/lib/auth'
 import type { Campaign, Product, Variant } from './types'
 
@@ -72,7 +73,7 @@ export default function ProductsManager({
       if (pErr) throw pErr
       router.refresh()
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e))
+      setError(formatErrorMessage(e))
     } finally {
       setBusy(false)
     }
@@ -92,7 +93,7 @@ export default function ProductsManager({
       if (dErr) throw dErr
       router.refresh()
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e))
+      setError(formatErrorMessage(e))
     } finally {
       setBusy(false)
     }
@@ -429,7 +430,7 @@ function ProductForm({
       }
       onSaved()
     } catch (e) {
-      setErr(e instanceof Error ? e.message : String(e))
+      setErr(formatErrorMessage(e))
     } finally {
       setSaving(false)
     }
@@ -517,7 +518,7 @@ function VariantForm({
       }
       onSaved()
     } catch (e) {
-      setErr(e instanceof Error ? e.message : String(e))
+      setErr(formatErrorMessage(e))
     } finally {
       setSaving(false)
     }

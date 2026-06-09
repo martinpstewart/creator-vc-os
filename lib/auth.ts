@@ -12,6 +12,18 @@
 
 export type Role = 'admin' | 'team' | 'support'
 
+// Owner — Martin. A small number of surfaces are scoped to a single
+// human even tighter than the admin role: the Acutrack import (a
+// wipe-and-replace operation) and the dispatch monitor banner on /.
+// Role-based ACCESS still applies as a baseline gate; this is the
+// stricter second check, used at the page, sidebar, and component
+// levels. If ownership ever changes, this is the only line to flip.
+export const OWNER_EMAIL = 'martinpstewart@gmail.com'
+
+export function isOwner(email: string | null | undefined): boolean {
+  return (email ?? '').trim().toLowerCase() === OWNER_EMAIL
+}
+
 // Screens we gate. Keep stable identifiers — they are matched by
 // screenForPath() below and by the nav menu entries.
 export type Screen =
@@ -23,6 +35,7 @@ export type Screen =
   | 'catalogue'
   | 'users'
   | 'tickets'
+  | 'settings'
 
 // Single source of truth for screen access. `query` (Ask / NL SQL) and
 // `users` (Auth admin) stay admin-only. Catalogue is now team-visible
@@ -31,7 +44,7 @@ export type Screen =
 // and `users` is the admin CRUD. `tickets` is staff-wide — admin + team
 // + support all need it.
 export const ACCESS: Record<Role, ReadonlyArray<Screen>> = {
-  admin: ['dashboard', 'campaigns', 'customers', 'marketing', 'query', 'catalogue', 'users', 'tickets'],
+  admin: ['dashboard', 'campaigns', 'customers', 'marketing', 'query', 'catalogue', 'users', 'tickets', 'settings'],
   team: ['campaigns', 'customers', 'marketing', 'tickets', 'catalogue'],
   support: ['customers', 'tickets'],
 }
@@ -61,6 +74,7 @@ export function screenForPath(pathname: string): Screen | null {
   if (pathname.startsWith('/catalogue')) return 'catalogue'
   if (pathname.startsWith('/users')) return 'users'
   if (pathname.startsWith('/tickets')) return 'tickets'
+  if (pathname.startsWith('/settings')) return 'settings'
   return null
 }
 

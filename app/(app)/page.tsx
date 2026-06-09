@@ -4,6 +4,7 @@ import { createClient } from '@/lib/supabase-server'
 import { withRetry } from '@/lib/supabase'
 import ThirtyDayChart, { type TimelinePoint } from '@/components/ThirtyDayChart'
 import StatsBarChart from '@/components/StatsBarChart'
+import DispatchMonitorBanner from '@/components/DispatchMonitorBanner'
 
 export const dynamic = 'force-dynamic'
 
@@ -108,6 +109,14 @@ export default function HomePage() {
         </span>
         <h1 className="text-xl md:text-2xl font-semibold text-white">Home</h1>
       </header>
+
+      {/* Dispatch monitor — reconciles paid Payhere orders against
+          Acutrack received-export rows and surfaces undispatched ones.
+          Client component fetches its own data; failures render nothing
+          so a broken monitor never blanks the dashboard. Slotted above
+          the suspended dashboard body so it appears before the rest of
+          the page even on first paint. */}
+      <DispatchMonitorBanner />
 
       <Suspense fallback={<HomeSkeleton />}>
         <DashboardBody />
