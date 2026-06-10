@@ -140,6 +140,14 @@ export default function UsersList({ initialUsers }: { initialUsers: UserRow[] })
   async function invite(email: string, role: Role, displayName: string) {
     setPendingId('__invite__')
     setError(null)
+    // The redirect URL gets baked into the magic-link email — so it
+    // has to point at the recipient's reachable app, NOT the inviter's
+    // current origin. Using window.location.origin meant an invite
+    // sent while running `npm run dev` shipped the user a link to
+    // *their* localhost:3000, which (rightly) refuses to connect.
+    // Hardcoded prod URL by default; NEXT_PUBLIC_APP_URL lets a dev
+    // override for staging tests.
+    const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? 'https://creator-vc-os.vercel.app'
     const { data, error: e } = await supabase.functions.invoke<{
       user_id: string
       email: string
@@ -152,7 +160,7 @@ export default function UsersList({ initialUsers }: { initialUsers: UserRow[] })
         displayName: displayName.trim() || null,
         // Send the magic link back to /login. Once signed in middleware
         // pushes them to their first-allowed screen.
-        redirectTo: `${window.location.origin}/login`,
+        redirectTo: `${appUrl}/login`,
       },
     })
     setPendingId(null)
