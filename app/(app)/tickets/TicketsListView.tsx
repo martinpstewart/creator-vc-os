@@ -37,12 +37,20 @@ export default function TicketsListView({
   initialRows,
   initialTotal,
   counts,
+  from = null,
+  to   = null,
 }: {
   initialRows: TicketListRow[]
   initialTotal: number
   // Per-status badge counts — server-fetched once, static for the
   // session. They reflect the full dataset, not the current search/page.
   counts: TicketStatusCounts
+  // Date-range filter forwarded from the server page. When set, every
+  // client-side refetch (status tab change, search debounce, page
+  // change) carries the same window so the table stays consistent
+  // with the chart + summary card above.
+  from?: string | null
+  to?:   string | null
 }) {
   const supabase = createClient()
 
@@ -62,10 +70,12 @@ export default function TicketsListView({
     return () => clearTimeout(handle)
   }, [searchInput])
 
-  // Reset paging whenever any filter changes.
+  // Reset paging whenever any filter changes — including the date
+  // window prop, since a new from/to swaps out the underlying row set
+  // and old pagination would land off the end.
   useEffect(() => {
     setPage(1)
-  }, [status, search])
+  }, [status, search, from, to])
 
   const refetch = useCallback(
     async (nextPage: number) => {
@@ -77,6 +87,8 @@ export default function TicketsListView({
           search: search || null,
           page: nextPage,
           pageSize: PAGE_SIZE,
+          from,
+          to,
         })
         setRows(rows)
         setTotal(total)
@@ -86,7 +98,7 @@ export default function TicketsListView({
         setLoading(false)
       }
     },
-    [supabase, status, search],
+    [supabase, status, search, from, to],
   )
 
   // Re-fetch on any filter change. We skip the very first paint because the

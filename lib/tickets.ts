@@ -293,7 +293,14 @@ export type ListTicketsOpts = {
 
 export async function listTickets(
   supabase: SupabaseClient,
-  { status = null, search = null, page = 1, pageSize = 25 }: ListTicketsOpts = {},
+  {
+    status = null,
+    search = null,
+    page = 1,
+    pageSize = 25,
+    from = null,
+    to   = null,
+  }: ListTicketsOpts & { from?: string | null; to?: string | null } = {},
 ): Promise<{ rows: TicketListRow[]; total: number }> {
   // NOTE: p_assignee is intentionally omitted — Freshdesk tickets have
   // no app-user assignment, so filtering on it returns zero rows.
@@ -304,12 +311,36 @@ export async function listTickets(
       p_assignee: null,
       p_page: page,
       p_page_size: pageSize,
+      p_from: from,
+      p_to:   to,
     })
     if (error) throw new Error(formatRpcError(error.message))
     const rows = (data ?? []) as TicketListRow[]
     const total = rows.length > 0 ? Number(rows[0].total_count) : 0
     return { rows, total }
   }, 'listTickets')
+}
+
+// Range-based variant of getTicketsCreatedTimeline — same row shape
+// but the SQL fills one row per day in [p_from, p_to). Used by the
+// /tickets page when a date filter is active so the chart respects
+// the same window the table does.
+export async function getTicketsCreatedTimelineRange(
+  supabase: SupabaseClient,
+  from: string,
+  to: string,
+): Promise<TicketTimelinePoint[]> {
+  return withRetry(async () => {
+    const { data, error } = await supabase.rpc('tickets_created_timeline_range', {
+      p_from: from,
+      p_to:   to,
+    })
+    if (error) throw new Error(formatRpcError(error.message))
+    return (data ?? []).map((r: { date: string; count: number | string }) => ({
+      date: String(r.date),
+      count: Number(r.count),
+    }))
+  }, 'getTicketsCreatedTimelineRange')
 }
 
 export async function getTicket(

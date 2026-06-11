@@ -7,36 +7,63 @@ const ANTHROPIC_API = 'https://api.anthropic.com/v1/messages'
 const MATCHER_MODEL = 'claude-haiku-4-5-20251001'
 const GENERATOR_MODEL = 'claude-sonnet-4-6'
 
+// Schema context for the SQL-generation path (no template matched).
+// Rewritten 11 Jun 2026 to point at the unified read-only view
+// aa_01_campaigns.v_all_orders — one row per order across every
+// source (live Shopify, Gumroad, Wix, shopify_legacy, ISOD/CrowdOx).
+// The view replaces the prior per-table schema dump so cross-source
+// questions ("total paid revenue across everything") just work.
+//
+// The templates in templates.ts still query the underlying tables
+// directly; this context only governs the freeform fallback in
+// generateSql() below.
 const SCHEMA_CONTEXT = `
-You write read-only PostgreSQL for the Creator VC OS data warehouse.
+You answer questions about Creator VC orders by writing a single read-only PostgreSQL SELECT against ONE view: aa_01_campaigns.v_all_orders. Never write to the database. Never query other tables unless explicitly told to. Return one SELECT statement.
 
-Schemas (always prefix; never use bare table names):
-- aa_01_campaigns
-  - campaigns (id, "Name" — note the column is double-quoted, capital N, legacy_code, shop_domain via shop_domains)
-  - raw_orders (id, campaign_id, shopify_order_id, shopify_order_number, email, financial_status, payload jsonb {line_items, shipping_address {country_code, city, first_name, last_name}, billing_address, customer, total_price, currency}, processed_at, shop_domain)
-  - isod_orders (id, campaign_id default 2, customer_email, shipping_country, shipping_country_code, order_created_at)
-  - isod_order_lines (isod_order_id, line_title, line_sku, line_quantity text, price_paid)
-  - campaign_orders, campaign_order_lines (unified order tables)
-  - products, variants, shopify_variants_map
-  - order_entitlements (campaign_id, email, product_legacy_code, quantity, price_paid)
-- aa_02_crm
-  - customers (id, email, first_name, last_name, has_raw_orders, has_isod_orders, has_campaign_orders, total_spend, total_orders, shipping_country, shipping_country_code)
-  - customer_raw_orders, customer_isod_orders, customer_campaign_orders (junction tables)
-  - customer_summary (view, joins everything; has all_campaigns jsonb)
+View: aa_01_campaigns.v_all_orders — one row per order, all sources, all statuses.
 
-Campaign registry (id → "Name", legacy_code):
-  1 The Thing Expanded               TT_EXPANDED
-  2 In Search of Darkness 1995       ISOD_95
-  3 FPS: First Person Shooter        FPS_DOC
-  4 Aliens Expanded 40th Anniversary ALIENS_EXPANDED
+| Column | Type | Meaning |
+|---|---|---|
+| order_key | text | Globally unique id, source:nativeid. Use for "this specific order". |
+| source | text | Order origin: shopify (live), gumroad, wix, shopify_legacy (TerrorBytes-era), isod (CrowdOx). |
+| order_number | text | Human order number / reference. |
+| order_date | timestamptz | When the order was placed. Use for date ranges, "last month", trends. |
+| email | text | Customer email, lowercased. |
+| customer_name | text | Best-known name; may be NULL. |
+| status | text | paid, refunded, partially_refunded, disputed, test. ISOD rows are always paid. |
+| amount | numeric | Order total in original currency. May be NULL for a few line-less ISOD orders. |
+| currency | text | Always USD today. |
+| amount_usd | numeric | USD total (== amount today). Use this for all revenue/spend sums. |
+| primary_campaign_id | bigint | The order's main/routing campaign. Use for "orders for campaign X". |
+| primary_campaign_name | text | Readable name of the primary campaign. |
+| campaign_ids | bigint[] | EVERY campaign the order's products touch. Use for "orders that include anything from campaign X". |
+| campaigns_text | text | Readable comma-list of all campaigns on the order. |
+| products_text | text | Readable product summary, e.g. "Blu-ray Package ×1, Digital ×2". Good for ILIKE. |
+| products | jsonb | Array of {name, variant, qty, campaign_id}. Use @> for precise containment. |
 
-Notes for queries:
-- "paid" means raw_orders.financial_status = 'paid'.
-- "refunded" means raw_orders.financial_status = 'refunded'.
-- "backers" usually means deduped paid customers — group by LOWER(email).
-- raw_orders.payload is a JSONB Shopify order. line_items is an array; shipping_address is an object.
-- Always end with LIMIT 50000 unless the user has asked for a smaller cap.
-- Output ONLY the SQL — no markdown fences, no commentary, no explanations.
+Campaign registry (id → name):
+- 1 = The Thing Expanded
+- 2 = In Search of Darkness 1995
+- 3 = FPS: First Person Shooter
+- 4 = Aliens Expanded 40th Anniversary
+- 5 = TerrorBytes
+- 7 = In Search Of Darkness 70s
+
+Rules for the SQL you generate:
+1. Revenue/spend questions default to WHERE status = 'paid' unless the user explicitly asks about refunds, disputes, or "all" orders. Always sum amount_usd, never amount.
+2. "Orders for / from campaign X" → primary_campaign_id = X.  "Orders that include / contain anything from campaign X" → campaign_ids @> ARRAY[X]. When unsure which the user means, prefer campaign_ids @> (it's the superset) and say so.
+3. Product filters: simple/loose → products_text ILIKE '%term%'. Precise → products @> '[{"name":"Exact Name"}]'::jsonb.
+4. Map campaign names in the user's question to ids using the registry above before filtering.
+5. One order can span multiple campaigns; its full amount_usd is counted once against its primary campaign. So per-campaign revenue from this view is approximate for mixed-cart orders. If the user needs exact per-product unit counts or exact per-campaign revenue splits, tell them that lives in aa_01_campaigns.v_raw_order_line_attribution (live Shopify only) — do not try to compute it from this view.
+6. Counting customers → COUNT(DISTINCT email). Counting orders → COUNT(*) or COUNT(DISTINCT order_key).
+7. Keep results bounded (add LIMIT for row-listing questions; aggregates don't need it).
+
+Known soft spots (mention only if relevant to the answer):
+- 216 ISOD orders have no line items → NULL amount and empty products.
+- ISOD status is assumed paid (the source carries no status field).
+- A handful of Gumroad rows from the live feed can show 0.00 totals.
+
+Output ONLY the SQL — no markdown fences, no commentary, no explanations.
 `.trim()
 
 async function callAnthropic(args: {

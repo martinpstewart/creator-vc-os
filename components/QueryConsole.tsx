@@ -24,6 +24,11 @@ const RECIPIENTS_STORAGE_KEY = 'creatorvc.email.recipients'
 export default function QueryConsole() {
   const router = useRouter()
   const [question, setQuestion] = useState('')
+  // Captures the question that produced the current `result`. We
+  // clear the textbox on a successful submit (UX request from Robin)
+  // but the CSV/email actions still need to know the question they're
+  // exporting for, so we stash it here separately.
+  const [submittedQuestion, setSubmittedQuestion] = useState('')
   const [running, setRunning] = useState(false)
   const [exporting, setExporting] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -53,6 +58,11 @@ export default function QueryConsole() {
       if (!res.ok) throw new Error(json.error ?? `HTTP ${res.status}`)
       const r = json as QueryResponse
       setResult(r)
+      // Remember what produced this result for export/email actions,
+      // then clear the textbox so Robin can type the next question
+      // without manually wiping it.
+      setSubmittedQuestion(q)
+      setQuestion('')
       // Always collapse SQL — most users only want results + CSV.
       // The query-type pill still labels AI-generated runs.
       setShowSql(false)
@@ -79,7 +89,7 @@ export default function QueryConsole() {
           Authorization: `Bearer ${session.access_token}`,
           apikey: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? '',
         },
-        body: JSON.stringify({ question }),
+        body: JSON.stringify({ question: submittedQuestion }),
       })
       if (!res.ok) {
         const t = await res.text()
@@ -99,7 +109,7 @@ export default function QueryConsole() {
     } finally {
       setExporting(false)
     }
-  }, [result, question, exporting])
+  }, [result, submittedQuestion, exporting])
 
   const hasEmailCol = !!result?.columns.includes('email')
 
