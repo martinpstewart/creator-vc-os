@@ -162,7 +162,7 @@ async function DashboardBody() {
           title="Legacy Platforms"
           data={data.shopify_legacy}
           channelKey="legacy_platforms"
-          tooltip="All historic-import data — Shopify (legacy), Gumroad CSV, Wix. Each live channel above tracks only its own ongoing activity; everything imported from a CSV lives here."
+          tooltip="Historic-import data for the non-live platforms — Shopify (legacy / TerrorBytes-era) and Wix. Historic Gumroad now lives in the Gumroad column above so the channel reads as 'all Gumroad'."
           variant="legacy"
         />
       </div>
@@ -303,6 +303,13 @@ function ChannelColumn({
           idKey={channelKey ?? title.toLowerCase().replace(/[^a-z0-9]+/g, '-')}
           subtitle="Orders per day"
           unitNoun="order"
+          // Headline = all-time orders, NOT the 30-day sum. The
+          // chart line still shows the last 30 days; the big number
+          // matches the "Orders" stat tile above. Prevents the
+          // misleading "Last 30 days · 146" reading on short-history
+          // channels like Gumroad where the 30-day sum coincidentally
+          // equals all-time.
+          allTimeTotal={Number(data.orders ?? 0)}
         />
       )}
 

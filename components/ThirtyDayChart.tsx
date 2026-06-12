@@ -27,16 +27,27 @@ export default function ThirtyDayChart({
   subtitle,
   unitNoun = 'event',
   emptyLabel = 'No activity in the last 30 days.',
+  allTimeTotal = null,
 }: {
   data: TimelinePoint[]
   // Unique per chart instance so the SVG gradient id doesn't collide
   // when two charts share a page.
   idKey: string
-  // Caption under the "Last 30 days" header (e.g. "Orders per day").
+  // Caption under the header (e.g. "Orders per day").
   subtitle: string
   // Singular noun used in the per-day tooltip — pluralised by appending 's'.
   unitNoun?: string
   emptyLabel?: string
+  // When provided, the headline number switches from the 30-day sum
+  // to this all-time figure, and the header label flips from "Last
+  // 30 days" → "All-time" with the original subtitle gaining a
+  // "· last 30 days shown" tail so the chart line's window is still
+  // explicit. When null/omitted we keep the legacy behaviour (chart
+  // total = 30-day sum). Used by the home dashboard channel columns
+  // where the chart card sits below all-time stat tiles — the 30-day
+  // sum there was misleading because it could equal the all-time
+  // value for short-history channels (Gumroad).
+  allTimeTotal?: number | null
 }) {
   // Index of the currently-hovered (or tapped) point, or null. Sits at
   // the top of the component so it can short-circuit early.
@@ -95,10 +106,16 @@ export default function ThirtyDayChart({
     <div className="bg-zinc-900 border border-zinc-800 rounded-xl overflow-hidden">
       <div className="px-4 md:px-5 py-3 border-b border-zinc-800 flex items-center justify-between gap-3">
         <div>
-          <p className="text-xs md:text-sm font-semibold text-white">Last 30 days</p>
-          <p className="text-[10px] md:text-xs text-zinc-500 mt-0.5">{subtitle}</p>
+          <p className="text-xs md:text-sm font-semibold text-white">
+            {allTimeTotal != null ? 'All-time' : 'Last 30 days'}
+          </p>
+          <p className="text-[10px] md:text-xs text-zinc-500 mt-0.5">
+            {allTimeTotal != null ? `${subtitle} · last 30 days shown` : subtitle}
+          </p>
         </div>
-        <p className="text-lg md:text-2xl font-bold tabular-nums text-white">{fmtInt(total)}</p>
+        <p className="text-lg md:text-2xl font-bold tabular-nums text-white">
+          {fmtInt(allTimeTotal != null ? allTimeTotal : total)}
+        </p>
       </div>
       <div className="px-3 py-3">
         <svg

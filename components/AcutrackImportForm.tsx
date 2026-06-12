@@ -32,13 +32,22 @@ type ParsedRow = {
   date_created: string
 }
 
+// Summary from glide-retrigger-missing surfaced in the success message.
+type RetriggerSummary = {
+  retriggered: number
+  failures:   number
+  eligible:   number
+  configured: boolean
+  message?:   string
+}
+
 type Stage =
   | { kind: 'idle' }
   | { kind: 'parsing'; filename: string }
   | { kind: 'parsed'; filename: string; rows: ParsedRow[] }
   | { kind: 'uploading'; batch: string; filename: string; rows: ParsedRow[]; done: number; total: number }
   | { kind: 'committing'; batch: string; filename: string }
-  | { kind: 'done'; liveRows: number; filename: string }
+  | { kind: 'done'; liveRows: number; filename: string; retrigger?: RetriggerSummary | null }
   | { kind: 'error'; message: string; filename?: string }
 
 const CHUNK_SIZE = 1000
@@ -160,7 +169,34 @@ export default function AcutrackImportForm() {
         (commitData as { live_rows?: number } | null)?.live_rows ?? 0,
       )
       activeBatchRef.current = null
-      setStage({ kind: 'done', liveRows, filename })
+
+      // Acutrack data is now live. Kick the Glide webhook for every
+      // still-red flagged order so Glide can re-attempt the Acutrack
+      // hand-off. Failure here doesn't roll back the commit — the
+      // import succeeded regardless, and we surface the retrigger
+      // outcome as an additional line in the success message.
+      let retrigger: RetriggerSummary | null = null
+      try {
+        const { data: rdata, error: rerr } = await supabase.functions.invoke<RetriggerSummary>(
+          'glide-retrigger-missing',
+          { body: {} },
+        )
+        if (rerr) throw rerr
+        if (rdata) retrigger = rdata
+      } catch (e) {
+        // Don't fail the commit on a retrigger error. Stash a faux
+        // summary so the UI can show "couldn't reach Glide" without
+        // hiding the fact that the CSV did land.
+        retrigger = {
+          retriggered: 0,
+          failures: 0,
+          eligible: 0,
+          configured: false,
+          message: `Retrigger step failed: ${formatErrorMessage(e)}`,
+        }
+      }
+
+      setStage({ kind: 'done', liveRows, filename, retrigger })
       if (inputRef.current) inputRef.current.value = ''
     } catch (e) {
       // Best-effort abort. We deliberately ignore its error — if even
@@ -274,7 +310,7 @@ function FilePicker({
 }: {
   inputRef: React.RefObject<HTMLInputElement | null>
   onFile: (file: File) => void
-  doneState?: { liveRows: number; filename: string }
+  doneState?: { liveRows: number; filename: string; retrigger?: RetriggerSummary | null }
   errorState?: { message: string; filename?: string }
   onReset: () => void
 }) {
@@ -310,6 +346,27 @@ function FilePicker({
             <p className="text-emerald-400/80 mt-0.5">
               From <code>{doneState.filename}</code>. Reload <code>/</code> or wait for the home dashboard tab to refocus to see the new state.
             </p>
+            {doneState.retrigger && (
+              <p className="text-emerald-400/80 mt-1">
+                {doneState.retrigger.configured === false ? (
+                  <span className="text-amber-300/90">
+                    {doneState.retrigger.message ?? 'Glide retrigger skipped (GLIDE_WEBHOOK_URL not set).'}
+                  </span>
+                ) : doneState.retrigger.eligible === 0 ? (
+                  <span>No orders needed a Glide retrigger.</span>
+                ) : (
+                  <span>
+                    Retriggered{' '}
+                    <strong className="text-emerald-200">{doneState.retrigger.retriggered}</strong> of{' '}
+                    {doneState.retrigger.eligible} order{doneState.retrigger.eligible === 1 ? '' : 's'} to Glide
+                    {doneState.retrigger.failures > 0 && (
+                      <> ({doneState.retrigger.failures} failed — check Supabase logs)</>
+                    )}
+                    .
+                  </span>
+                )}
+              </p>
+            )}
             <button
               type="button"
               onClick={onReset}
