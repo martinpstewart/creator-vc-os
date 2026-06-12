@@ -2,9 +2,8 @@ import { Suspense } from 'react'
 import {
   getCampaignStats,
   getCampaignBackerList,
-  getCampaignUnitsSold,
+  getCampaignProducts,
   getCampaignHistoricBreakdown,
-  getCampaignHistoricUnitsSold,
   type HistoricBreakdownRow,
 } from '@/lib/supabase'
 import { getCurrentRole } from '@/lib/auth-server'
@@ -48,48 +47,31 @@ export default async function CampaignDetailPage({
   // shouldn't blank the entire campaign detail. Failures are logged
   // for diagnosis; the user sees a partially-populated page rather
   // than "Something went wrong".
-  const [allStats, unitsSoldLive, historicBreakdown, historicUnitsSold, role] =
+  const [allStats, products, historicBreakdown, role] =
     await Promise.all([
       getCampaignStats().catch((e) => {
         console.error('[campaigns/[id]] getCampaignStats failed', e)
         return []
       }),
-      getCampaignUnitsSold(campaignId).catch((e) => {
-        console.error('[campaigns/[id]] getCampaignUnitsSold failed', e)
+      getCampaignProducts(campaignId).catch((e) => {
+        console.error('[campaigns/[id]] getCampaignProducts failed', e)
         return []
       }),
       getCampaignHistoricBreakdown(campaignId).catch((e): HistoricBreakdownRow[] => {
         console.error('[campaigns/[id]] getCampaignHistoricBreakdown failed', e)
         return []
       }),
-      getCampaignHistoricUnitsSold(campaignId).catch((e) => {
-        console.error('[campaigns/[id]] getCampaignHistoricUnitsSold failed', e)
-        return []
-      }),
       getCurrentRole(),
     ])
   const showRevenue = role === 'admin'
 
-  // Merge live + historic into one Products list. Live rows have a
-  // variant_name from the v_raw_order_line_attribution resolver; historic
-  // rows have a NULL variant_name and a source_platform suffix tag in the
-  // display name so they can be distinguished at a glance.
-  const unitsSold = [
-    ...unitsSoldLive,
-    ...historicUnitsSold.map((r) => ({
-      product_name: r.product_name,
-      variant_name: r.variant_name ?? `${labelForSource(r.source_platform)} (historic)`,
-      total_quantity: r.total_quantity,
-    })),
-  ]
-
   const campaign = allStats.find(c => c.campaign_id === campaignId)
   if (!campaign) notFound()
 
-  // Sum historic rollups across platforms. Customer count is the
-  // per-platform sum (slight over-count if a buyer appears in multiple
-  // historic sources — acceptable; the per-platform table below makes
-  // the breakdown clear).
+  // Sum historic rollups across platforms for the per-platform
+  // breakdown table — display only; the v3 stats RPC already folds
+  // historic + ISOD into total_orders / total_customers, so we do NOT
+  // add this on top for the headline tiles.
   const historicTotals = historicBreakdown.reduce(
     (acc, r) => {
       acc.orders += Number(r.orders)
@@ -101,19 +83,20 @@ export default async function CampaignDetailPage({
     { orders: 0, customers: 0, revenue: 0, units: 0 },
   )
 
-  // Combined headline figures: live (from v_raw_order_line_attribution
-  // via get_campaign_stats_v2) PLUS historic.
-  const combinedRevenue   = Number(campaign.total_spend ?? 0) + historicTotals.revenue
-  const combinedOrders    = Number(campaign.total_orders ?? 0) + historicTotals.orders
-  const combinedBackers   = Number(campaign.total_customers ?? 0) + historicTotals.customers
+  // Headline figures from v3 — already covers live Shopify + ISOD +
+  // historic CSV imports. Revenue adds historic on top (v3.total_spend
+  // captures live Shopify lines + ISOD price_paid only). Same shape as
+  // the campaigns list page after the double-count fix.
+  const combinedOrders  = Number(campaign.total_orders ?? 0)
+  const combinedBackers = Number(campaign.total_customers ?? 0)
+  const combinedRevenue = Number(campaign.total_spend ?? 0) + historicTotals.revenue
   const avgSpend = combinedRevenue > 0 && combinedBackers > 0
     ? combinedRevenue / combinedBackers
     : null
-  const liveUnits = unitsSold.length > 0
-    ? unitsSold.reduce((s, u) => s + Number(u.total_quantity), 0)
-    : 0
-  const totalUnits = liveUnits + historicTotals.units
-  const distinctProducts = new Set(unitsSold.map(u => u.product_name)).size
+  // Units now come from the unified products RPC, which itself sums
+  // live Shopify + historic + ISOD line quantities. Counts once.
+  const totalUnits = products.reduce((s, p) => s + Number(p.units || 0), 0)
+  const distinctProducts = products.length
 
   return (
     <div className="p-4 md:p-8">
@@ -173,11 +156,15 @@ export default async function CampaignDetailPage({
         <CampaignExports campaignId={campaignId} campaignName={campaign.campaign_name} />
       </div>
 
-      {/* Tabbed Products / Backers — both lists merge live + historic. */}
+      {/* Tabbed Products / Backers — Products is the unified list across
+          live Shopify + historic CSV imports + ISOD lines, with per-product
+          revenue (admin only). Totals at the foot ladder up to the
+          campaign-level revenue figure above. */}
       <CampaignDetailTabs
-        unitsSold={unitsSold}
+        products={products}
         productCount={distinctProducts}
         backerCount={combinedBackers}
+        showRevenue={showRevenue}
         backersSlot={
           <Suspense fallback={<SkeletonRows rows={6} />}>
             <BackersSlot campaignId={campaignId} />

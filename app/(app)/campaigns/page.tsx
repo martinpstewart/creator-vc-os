@@ -21,16 +21,25 @@ function fmt(n: number | string | null, currency = false) {
 }
 
 export default async function CampaignsPage() {
-  // Three data sources, all aggregated separately at the DB layer:
-  //   - getCampaigns()                  → canonical list (id, name, legacy_code)
-  //   - getCampaignStats()              → live Shopify aggregation (only
-  //                                       campaigns with orders appear here)
-  //   - getCampaignsHistoricTotals()    → Gumroad / shopify_legacy / Wix
+  // Sources:
+  //   - getCampaigns()               → canonical list (id, name, legacy_code).
+  //                                    Start here so a brand-new zero-order
+  //                                    campaign still appears.
+  //   - getCampaignStats() / v3      → per-campaign rollup. total_orders +
+  //                                    total_customers already cover all
+  //                                    paying sources (raw_orders + isod +
+  //                                    historic_orders). total_spend covers
+  //                                    live Shopify lines + ISOD price_paid.
+  //   - getCampaignsHistoricTotals() → historic CSV-import revenue (Gumroad
+  //                                    / shopify_legacy / Wix line revenue).
+  //                                    Added on top of v3.total_spend, since
+  //                                    v3 only carries the live + ISOD slice
+  //                                    of revenue.
   //
-  // We start from the canonical list so a freshly-created campaign with
-  // zero orders still appears (otherwise the stats RPC is the implicit
-  // gate on visibility, which is wrong now that users can create
-  // campaigns from the UI).
+  // What this means for the row math:
+  //   orders    = v3.total_orders                (do NOT add historic — already in v3)
+  //   customers = v3.total_customers             (do NOT add historic — already in v3)
+  //   revenue   = v3.total_spend + h.revenue     (these slices don't overlap)
   //
   // Role decides whether revenue columns appear at all — team/support
   // get backers + orders only.
@@ -52,22 +61,26 @@ export default async function CampaignsPage() {
   const rows = allCampaigns.map((c) => {
     const live = liveById.get(c.id)
     const h = historicById.get(c.id)
-    const live_revenue   = Number(live?.total_spend ?? 0)
-    const live_orders    = Number(live?.total_orders ?? 0)
-    const live_customers = Number(live?.total_customers ?? 0)
-    const h_revenue   = h ? Number(h.revenue) : 0
-    const h_orders    = h ? Number(h.orders) : 0
-    const h_customers = h ? Number(h.unique_customers) : 0
+    // v3.total_orders + v3.total_customers ALREADY include historic
+    // (raw_orders + isod_orders + historic_order_lines all rolled in
+    // inside the RPC). Do NOT add historic on top — that double-counts.
+    // v3.total_spend is live Shopify line-revenue only, so historic
+    // revenue does need to be added on top.
+    const v3_orders    = Number(live?.total_orders ?? 0)
+    const v3_customers = Number(live?.total_customers ?? 0)
+    const live_spend   = Number(live?.total_spend ?? 0)
+    const h_revenue    = h ? Number(h.revenue) : 0
+    const h_orders_for_historic_only = h ? Number(h.orders) : 0
     return {
       campaign_id: c.id,
       campaign_name: c.name,
-      revenue: live_revenue + h_revenue,
-      orders: live_orders + h_orders,
-      // Customer count sums per-source dedupes — slight over-count if a
-      // buyer appears in both live and historic for the same campaign.
-      // The detail page makes the per-platform breakdown explicit.
-      customers: live_customers + h_customers,
-      has_historic: !!h,
+      revenue: live_spend + h_revenue,
+      orders: v3_orders,
+      customers: v3_customers,
+      // The "+ HISTORIC" badge fires when a campaign has ANY historic
+      // contribution. The number is folded into v3.total_orders/total_customers
+      // already; the badge just tells the reader the row spans imports.
+      has_historic: h_orders_for_historic_only > 0,
     }
   })
 

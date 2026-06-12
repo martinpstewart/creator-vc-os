@@ -2,11 +2,35 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { ChevronDown, ChevronRight, Plus, Pencil, Trash2, Copy, X } from 'lucide-react'
+import { ChevronDown, ChevronRight, Plus, Pencil, Trash2, Copy, X, Eye } from 'lucide-react'
 import { createClient } from '@/lib/supabase-browser'
 import { formatErrorMessage } from '@/lib/format-error'
 import type { Role } from '@/lib/auth'
+import type { CampaignProductRow } from '@/lib/supabase'
 import type { Campaign, Product, Variant } from './types'
+
+const SOURCE_LABEL: Record<string, string> = {
+  shopify: 'Shopify',
+  shopify_legacy: 'Shopify (legacy)',
+  gumroad: 'Gumroad',
+  wix: 'Wix',
+  isod: 'ISOD',
+}
+function sourceLabel(s: string): string {
+  return SOURCE_LABEL[s] ?? s.charAt(0).toUpperCase() + s.slice(1)
+}
+function sourceBadgeClass(s: string): string {
+  switch (s) {
+    case 'shopify':         return 'bg-zinc-800 text-zinc-300'
+    case 'shopify_legacy':  return 'bg-amber-900/40 text-amber-200'
+    case 'gumroad':         return 'bg-emerald-900/40 text-emerald-200'
+    case 'wix':             return 'bg-purple-900/40 text-purple-200'
+    case 'isod':            return 'bg-blue-900/40 text-blue-200'
+    default:                return 'bg-zinc-800 text-zinc-400'
+  }
+}
+const numFmt = new Intl.NumberFormat('en-US')
+const usdFmt = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 })
 
 type EditMode =
   | null
@@ -22,13 +46,16 @@ export default function ProductsManager({
   products,
   variants,
   mappedLegacyCodes,
+  observedByCampaign,
 }: {
   role: Role
   campaigns: Campaign[]
   products: Product[]
   variants: Variant[]
   mappedLegacyCodes: Set<string>
+  observedByCampaign: Record<number, CampaignProductRow[]>
 }) {
+  const showRevenue = role === 'admin'
   const router = useRouter()
   // All campaigns start collapsed. Previously we eagerly expanded every
   // campaign in the list, which made the page noisy as the campaign
@@ -175,6 +202,10 @@ export default function ProductsManager({
                     />
                   ))
                 )}
+                <ObservedPanel
+                  rows={observedByCampaign[campaign.id] ?? []}
+                  showRevenue={showRevenue}
+                />
               </div>
             )}
           </div>
@@ -583,6 +614,82 @@ function Toggle({ label, checked, onChange }: { label: string; checked: boolean;
       <input type="checkbox" checked={checked} onChange={(e) => onChange(e.target.checked)} className="rounded border-zinc-700 bg-zinc-900" />
       {label}
     </label>
+  )
+}
+
+// Read-only mirror of the per-campaign get_campaign_products_v2 RPC.
+// Unifies live Shopify lines + historic CSV imports + ISOD lines so the
+// catalogue page tells the same product story as the campaign detail
+// Products tab — without polluting the editable products table above.
+function ObservedPanel({
+  rows,
+  showRevenue,
+}: {
+  rows: CampaignProductRow[]
+  showRevenue: boolean
+}) {
+  if (rows.length === 0) return null
+
+  const totalUnits = rows.reduce((s, r) => s + Number(r.units || 0), 0)
+  const totalRevenue = rows.reduce((s, r) => s + Number(r.revenue || 0), 0)
+
+  return (
+    <div className="border-t border-zinc-800 bg-zinc-950/40">
+      <div className="px-6 py-3 flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <Eye size={13} className="text-zinc-500" />
+          <p className="text-[11px] uppercase tracking-wide font-semibold text-zinc-400">
+            Observed in source data
+          </p>
+        </div>
+        <p className="text-[10px] text-zinc-600">
+          Read-only · top {rows.length} by units · live Shopify + historic + ISOD
+        </p>
+      </div>
+      <div className="overflow-x-auto">
+        <table className="w-full text-xs">
+          <thead>
+            <tr className="border-t border-zinc-800/60">
+              <th className="text-left px-6 py-2 text-[10px] font-medium text-zinc-500 uppercase tracking-wide">Product / SKU</th>
+              <th className="text-left px-2 py-2 text-[10px] font-medium text-zinc-500 uppercase tracking-wide">Variant</th>
+              <th className="text-left px-2 py-2 text-[10px] font-medium text-zinc-500 uppercase tracking-wide">Source</th>
+              <th className="text-right px-2 py-2 text-[10px] font-medium text-zinc-500 uppercase tracking-wide">Units</th>
+              {showRevenue && (
+                <th className="text-right px-6 py-2 text-[10px] font-medium text-zinc-500 uppercase tracking-wide">Revenue</th>
+              )}
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((r, i) => (
+              <tr key={i} className="border-t border-zinc-800/40">
+                <td className="px-6 py-2 text-zinc-200 font-mono text-[11px]">{r.product_name}</td>
+                <td className="px-2 py-2 text-zinc-500">{r.variant_name || '—'}</td>
+                <td className="px-2 py-2">
+                  <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-semibold uppercase tracking-wide ${sourceBadgeClass(r.source_platform)}`}>
+                    {sourceLabel(r.source_platform)}
+                  </span>
+                </td>
+                <td className="px-2 py-2 text-right text-zinc-300 tabular-nums">{numFmt.format(Number(r.units || 0))}</td>
+                {showRevenue && (
+                  <td className="px-6 py-2 text-right text-zinc-300 tabular-nums">{usdFmt.format(Number(r.revenue || 0))}</td>
+                )}
+              </tr>
+            ))}
+          </tbody>
+          <tfoot>
+            <tr className="border-t border-zinc-800">
+              <td className="px-6 py-2 text-[10px] uppercase tracking-wide font-medium text-zinc-500" colSpan={3}>
+                Total
+              </td>
+              <td className="px-2 py-2 text-right text-white font-semibold tabular-nums">{numFmt.format(totalUnits)}</td>
+              {showRevenue && (
+                <td className="px-6 py-2 text-right text-white font-semibold tabular-nums">{usdFmt.format(totalRevenue)}</td>
+              )}
+            </tr>
+          </tfoot>
+        </table>
+      </div>
+    </div>
   )
 }
 

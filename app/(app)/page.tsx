@@ -137,9 +137,11 @@ async function DashboardBody() {
   return (
     <div className="space-y-6 md:space-y-8">
       {/* Headline row — combined across every channel (Shopify + Gumroad
-          + Legacy Platforms + ISOD). The customer count comes from the
-          canonical aa_02_crm.v_paying_customer_emails view; revenue and
-          orders are the sum of the three channel columns below. */}
+          + Other Sources). Other Sources bundles Wix historic + ISOD.
+          The customer count comes from the canonical
+          aa_02_crm.v_paying_customer_emails view; orders + revenue + units
+          are the sum of the three channel columns below — they ladder up
+          exactly so Robin can trace the headline back to a column. */}
       <section>
         <p className="text-[11px] uppercase tracking-wider text-zinc-500 font-medium mb-2">
           All-time · All channels
@@ -159,10 +161,10 @@ async function DashboardBody() {
         <ChannelColumn title="Shopify" data={data.shopify} />
         <ChannelColumn title="Gumroad" data={data.gumroad} />
         <ChannelColumn
-          title="Legacy Platforms"
+          title="Other Sources"
           data={data.shopify_legacy}
-          channelKey="legacy_platforms"
-          tooltip="Historic-import data for the non-live platforms — Shopify (legacy / TerrorBytes-era) and Wix. Historic Gumroad now lives in the Gumroad column above so the channel reads as 'all Gumroad'."
+          channelKey="other_sources"
+          tooltip="Wix (historic) + ISOD documentary orders. Historic Shopify (legacy / TerrorBytes-era) is folded into the Shopify column and historic Gumroad into the Gumroad column above, so each live channel reads as all-time. ISOD contributes orders + customers only — revenue and units aren't tracked at the order level in source."
           variant="legacy"
         />
       </div>

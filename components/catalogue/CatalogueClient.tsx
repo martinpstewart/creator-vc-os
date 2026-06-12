@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { Package } from 'lucide-react'
 import type { Role } from '@/lib/auth'
+import type { CampaignProductRow } from '@/lib/supabase'
 import ProductsManager from './ProductsManager'
 import InboxManager from './InboxManager'
 import type { Campaign, Product, Variant } from './types'
@@ -15,6 +16,7 @@ export default function CatalogueClient({
   products,
   variants,
   mappedLegacyCodes,
+  observedByCampaign,
   pendingInboxCount,
   errors,
 }: {
@@ -23,6 +25,7 @@ export default function CatalogueClient({
   products: Product[]
   variants: Variant[]
   mappedLegacyCodes: string[]
+  observedByCampaign: Record<number, CampaignProductRow[]>
   pendingInboxCount: number
   errors: { campaigns: string | null; products: string | null; variants: string | null }
 }) {
@@ -75,6 +78,7 @@ export default function CatalogueClient({
             products={products}
             variants={variants}
             mappedLegacyCodes={mappedSet}
+            observedByCampaign={observedByCampaign}
           />
         )}
       </div>

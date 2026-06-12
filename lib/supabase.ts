@@ -262,6 +262,31 @@ export async function getCampaignHistoricUnitsSold(campaignId: number) {
   }, 'getCampaignHistoricUnitsSold')
 }
 
+// Unified per-campaign products list from every source we reconcile in
+// the dashboard / campaigns list: live Shopify (v_raw_order_line_attribution)
+// + historic CSV imports (historic_order_lines) + ISOD lines (identified by
+// sku_after_correction). Includes per-product revenue so the Products tab
+// ladders up to the campaign-level revenue figure.
+export type CampaignProductRow = {
+  product_name: string
+  variant_name: string | null
+  source_platform: string
+  units: number
+  revenue: number
+}
+export const getCampaignProducts = unstable_cache(
+  (campaignId: number) =>
+    withRetry(async () => {
+      const { data, error } = await supabase.rpc('get_campaign_products_v2', {
+        p_campaign_id: campaignId,
+      })
+      if (error) throw error
+      return (data ?? []) as CampaignProductRow[]
+    }, 'getCampaignProducts'),
+  ['campaign-products-v2'],
+  { revalidate: 60, tags: ['campaign-products'] }
+)
+
 // Historic-orders breakdown per platform for a campaign. Used by the
 // campaign detail page to surface Gumroad / shopify_legacy / Wix activity
 // that doesn't appear in v_raw_order_line_attribution.

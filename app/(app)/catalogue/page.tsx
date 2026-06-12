@@ -1,5 +1,6 @@
 import { createClient } from '@/lib/supabase-server'
 import { getCurrentRole } from '@/lib/auth-server'
+import { getCampaignProducts, type CampaignProductRow } from '@/lib/supabase'
 import CatalogueClient from '@/components/catalogue/CatalogueClient'
 import type { Campaign, Product, Variant } from '@/components/catalogue/types'
 
@@ -44,13 +45,34 @@ export default async function CataloguePage() {
       .filter((c): c is string => !!c),
   )
 
+  // "Observed in source data" — the same per-campaign products RPC the
+  // campaign detail page uses (live Shopify lines + historic CSV imports
+  // + ISOD lines). Surfaced read-only inside each accordion so curated
+  // catalogue + observed reality sit side-by-side without polluting
+  // each other. ~100 rows max per campaign (RPC caps at top-100 by units),
+  // and the wrapper is cached 60s per campaign — fanning out across all
+  // campaigns in parallel stays under 100ms total.
+  const campaignsList = (campaignsRes.data ?? []) as Campaign[]
+  const observedByCampaign: Record<number, CampaignProductRow[]> = {}
+  await Promise.all(
+    campaignsList.map(async (c) => {
+      try {
+        observedByCampaign[c.id] = await getCampaignProducts(c.id)
+      } catch (e) {
+        console.error(`[catalogue] getCampaignProducts(${c.id}) failed`, e)
+        observedByCampaign[c.id] = []
+      }
+    }),
+  )
+
   return (
     <CatalogueClient
       role={role}
-      campaigns={(campaignsRes.data ?? []) as Campaign[]}
+      campaigns={campaignsList}
       products={(productsRes.data ?? []) as Product[]}
       variants={(variantsRes.data ?? []) as Variant[]}
       mappedLegacyCodes={Array.from(mappedLegacyCodes)}
+      observedByCampaign={observedByCampaign}
       pendingInboxCount={inboxCountRes.count ?? 0}
       errors={{
         campaigns: campaignsRes.error?.message ?? null,
