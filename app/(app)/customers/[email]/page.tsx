@@ -1,6 +1,11 @@
 import { getCustomerByEmail } from '@/lib/supabase'
 import { createClient } from '@/lib/supabase-server'
 import { listCustomerTickets } from '@/lib/tickets'
+
+// Bump Vercel's default 10s function timeout. get_customer_detail is
+// ~1.1s warm; allowing 60s gives margin for the parallel tickets fetch
+// and any cold-cache surprise.
+export const maxDuration = 60
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import CustomerCampaigns from '@/components/CustomerCampaigns'

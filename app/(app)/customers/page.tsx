@@ -13,6 +13,12 @@ import StoreFilter, { type StoreValue } from '@/components/StoreFilter'
 const STORE_VALUES_RUNTIME = ['shopify', 'shopify_legacy', 'gumroad', 'isod', 'indiegogo', 'kickstarter', 'wix'] as const
 import ClickableRow from '@/components/ClickableRow'
 
+// Bump Vercel's default 10s function timeout. get_customers_list is
+// ~1.4s warm but the page also pulls getCampaigns + auth check.
+// Cold misses behind a slow Supabase node can drift past 10s and
+// surface as FUNCTION_INVOCATION_TIMEOUT.
+export const maxDuration = 60
+
 function fmt(n: number | string | null, currency = false) {
   if (n === null || n === undefined) return '—'
   const num = typeof n === 'string' ? parseFloat(n) : n

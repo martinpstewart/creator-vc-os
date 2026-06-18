@@ -1,12 +1,17 @@
 import { Suspense } from 'react'
 import { Home, Loader2 } from 'lucide-react'
-import { createClient } from '@/lib/supabase-server'
-import { withRetry } from '@/lib/supabase'
+import { getHomeDashboardCached } from '@/lib/supabase'
 import ThirtyDayChart, { type TimelinePoint } from '@/components/ThirtyDayChart'
 import StatsBarChart from '@/components/StatsBarChart'
 import DispatchMonitorBanner from '@/components/DispatchMonitorBanner'
 
 export const dynamic = 'force-dynamic'
+// Vercel default function timeout is 10s; home_dashboard_impl runs
+// ~7s cold so a cache miss can race the limit and surface as
+// FUNCTION_INVOCATION_TIMEOUT (e.g. error 2985362746@E394). Bumping
+// to 60s gives headroom; warm hits (every 10 min via the unstable_cache
+// wrapper) return in milliseconds and don't burn the budget.
+export const maxDuration = 60
 
 // ============================================================
 // Wire shape returned by public.home_dashboard()
@@ -57,30 +62,18 @@ type Payload = {
 }
 
 // ============================================================
-// Fetch — single RPC, server-side aggregation. ~880ms cold; the
-// spinner under <Suspense> covers it. We deliberately don't wrap
-// this in unstable_cache because the auth-aware SSR client reads
-// cookies(), which isn't allowed inside cached functions — a
-// stateless anon-key client would be required to cache safely.
-// Re-add if cold-hit latency becomes a problem.
+// Fetch — wraps getHomeDashboardCached (lib/supabase.ts). The
+// underlying RPC home_dashboard_impl takes ~7s cold; unstable_cache
+// keeps it warm for 10 minutes so only the first request after a
+// cache eviction pays the latency. Middleware already enforces
+// admin-only on this route so calling the un-gated impl is safe.
 // ============================================================
-
-// Returns null on error — `home_dashboard` is admin-gated server-side and
-// raises `forbidden: admin only` for team/support callers. The middleware
-// redirects non-admins before they reach this page, so a null result here
-// almost certainly means Postgres is down rather than RBAC bouncing us.
 async function getHomeDashboard(): Promise<Payload | null> {
   try {
-    return await withRetry(async () => {
-      const supabase = await createClient()
-      const { data, error } = await supabase.rpc('home_dashboard')
-      if (error) throw new Error(error.message)
-      return data as Payload
-    }, 'getHomeDashboard')
+    return (await getHomeDashboardCached()) as Payload
   } catch (e) {
-    // Both attempts failed — render the "unavailable" card rather than
-    // throw into the error boundary. Home is admin-only; non-admins
-    // never get here.
+    // Render the "unavailable" card rather than throw into the
+    // error boundary. Home is admin-only; non-admins never get here.
     console.error('[home_dashboard]', e)
     return null
   }

@@ -11,6 +11,9 @@ import ClickableRow from '@/components/ClickableRow'
 import NewCampaignButton from '@/components/NewCampaignButton'
 
 export const dynamic = 'force-dynamic'
+// Bump Vercel's default 10s function timeout to insulate against
+// cold-cache spikes during the live DB consolidation.
+export const maxDuration = 60
 
 function fmt(n: number | string | null, currency = false) {
   if (n === null || n === undefined) return '—'

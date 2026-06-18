@@ -37,6 +37,29 @@ export async function withRetry<T>(fn: () => Promise<T>, label: string): Promise
   }
 }
 
+// Home dashboard payload — the big JSON the dashboard page renders.
+// Backed by public.home_dashboard_impl (the un-gated sibling of the
+// admin-only home_dashboard wrapper). The middleware already enforces
+// admin-only on '/'; by the time this fetcher runs the caller has been
+// vetted, so calling the impl directly is safe AND it lets us use the
+// stateless anon-key client (the admin-gated version needs an
+// auth-aware cookie client, which can't be wrapped in unstable_cache).
+//
+// Cached: 600s — refresh cadence is "10 minutes" because the function
+// takes ~7s cold and we'd rather pay that once every 10 minutes than
+// on every page load. Bust via revalidateTag('home-dashboard') if a
+// later DB write needs to make the dashboard catch up immediately.
+export const getHomeDashboardCached = unstable_cache(
+  () =>
+    withRetry(async () => {
+      const { data, error } = await supabase.rpc('home_dashboard_impl')
+      if (error) throw error
+      return data as Record<string, unknown>
+    }, 'getHomeDashboardCached'),
+  ['home-dashboard'],
+  { revalidate: 600, tags: ['home-dashboard'] }
+)
+
 // Dashboard KPIs — count unique customers from customer_summary.
 // Cached: 60s — value rarely changes minute-to-minute.
 export const getKPIs = unstable_cache(
