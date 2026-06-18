@@ -38,27 +38,18 @@ export async function withRetry<T>(fn: () => Promise<T>, label: string): Promise
 }
 
 // Home dashboard payload — the big JSON the dashboard page renders.
-// Backed by public.home_dashboard_impl (the un-gated sibling of the
-// admin-only home_dashboard wrapper). The middleware already enforces
-// admin-only on '/'; by the time this fetcher runs the caller has been
-// vetted, so calling the impl directly is safe AND it lets us use the
-// stateless anon-key client (the admin-gated version needs an
-// auth-aware cookie client, which can't be wrapped in unstable_cache).
-//
-// Cached: 600s — refresh cadence is "10 minutes" because the function
-// takes ~7s cold and we'd rather pay that once every 10 minutes than
-// on every page load. Bust via revalidateTag('home-dashboard') if a
-// later DB write needs to make the dashboard catch up immediately.
-export const getHomeDashboardCached = unstable_cache(
-  () =>
-    withRetry(async () => {
-      const { data, error } = await supabase.rpc('home_dashboard_impl')
-      if (error) throw error
-      return data as Record<string, unknown>
-    }, 'getHomeDashboardCached'),
-  ['home-dashboard'],
-  { revalidate: 600, tags: ['home-dashboard'] }
-)
+// Backed by public.home_dashboard_impl which now reads from
+// aa_02_crm.dashboard_snapshot (refreshed every 5 min by pg_cron).
+// The RPC returns in ~2ms so we deliberately do NOT layer
+// unstable_cache on top — the DB IS the cache. A Next.js cache here
+// would just delay updates from the cron refresh.
+export async function getHomeDashboardCached() {
+  return withRetry(async () => {
+    const { data, error } = await supabase.rpc('home_dashboard_impl')
+    if (error) throw error
+    return data as Record<string, unknown>
+  }, 'getHomeDashboardCached')
+}
 
 // Dashboard KPIs — count unique customers from customer_summary.
 // Cached: 60s — value rarely changes minute-to-minute.
@@ -155,37 +146,10 @@ type CustomerRow = {
   total_count: number
 }
 
-// Customers list — uses RPC so spend is based on actual Shopify raw_orders (not Backerkit summary).
-// Cached: 600s — the underlying get_customers_list jumped from 1.4s to
-// ~7s during C Chat's customer_summary refactor, which lights up
-// Vercel's 10s function ceiling on Hobby. unstable_cache uses the
-// arguments as the cache key (search + page + size + campaigns +
-// stores), so each filter combination caches independently for 10 min.
-const getCustomersCached = unstable_cache(
-  async (
-    search: string | null,
-    page: number,
-    pageSize: number,
-    campaignIds: number[] | null,
-    stores: string[] | null,
-  ) =>
-    withRetry(async () => {
-      const { data, error } = await supabase.rpc('get_customers_list', {
-        p_search: search,
-        p_page: page,
-        p_page_size: pageSize,
-        p_campaign_ids: campaignIds,
-        p_stores: stores,
-      })
-      if (error) throw error
-      const rows = (data ?? []) as CustomerRow[]
-      const total = rows.length > 0 ? Number(rows[0].total_count) : 0
-      return { customers: rows, total }
-    }, 'getCustomersCached'),
-  ['customers-list-v2'],
-  { revalidate: 600, tags: ['customers-list'] },
-)
-
+// Customers list — backed by aa_02_crm.customer_list_snapshot
+// (refreshed every 10 min by pg_cron). The RPC is a thin SELECT
+// against an indexed table now, so we don't layer unstable_cache
+// on top — the DB IS the cache.
 export async function getCustomers(
   search?: string,
   page = 1,
@@ -193,13 +157,19 @@ export async function getCustomers(
   campaignIds?: number[],
   stores?: string[],
 ) {
-  return getCustomersCached(
-    search ?? null,
-    page,
-    pageSize,
-    campaignIds && campaignIds.length > 0 ? campaignIds : null,
-    stores && stores.length > 0 ? stores : null,
-  )
+  return withRetry(async () => {
+    const { data, error } = await supabase.rpc('get_customers_list', {
+      p_search: search ?? null,
+      p_page: page,
+      p_page_size: pageSize,
+      p_campaign_ids: campaignIds && campaignIds.length > 0 ? campaignIds : null,
+      p_stores: stores && stores.length > 0 ? stores : null,
+    })
+    if (error) throw error
+    const rows = (data ?? []) as CustomerRow[]
+    const total = rows.length > 0 ? Number(rows[0].total_count) : 0
+    return { customers: rows, total }
+  }, 'getCustomers')
 }
 
 // Per-customer per-campaign order line items (for customer detail click-through)
