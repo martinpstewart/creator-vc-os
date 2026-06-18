@@ -18,6 +18,16 @@ type ProductRow = {
   revenue: number | string
   variant_count?: number
 }
+// Campaign rollup row for the Other Sources column. Replaces the per-product
+// breakdown there because Wix + ISOD are historical channels where the
+// campaign-level attribution is more useful than the SKU list.
+type CampaignRow = {
+  campaign_id: number | null
+  campaign_name: string | null
+  legacy_code: string | null
+  orders: number
+  revenue: number | string
+}
 // TimelinePoint is the chart's per-day data point — imported from the
 // shared component so the type stays in one place.
 type ChannelData = {
@@ -27,9 +37,11 @@ type ChannelData = {
   units: number
   products: ProductRow[]
   timeline: TimelinePoint[]
-  // Only present on the Legacy Platforms block (drives the bar-chart
-  // visual). Optional so the other channels' types stay clean.
+  // Only present on the Legacy Platforms / Other Sources block. The
+  // bar-chart variant uses distinct_products; the campaigns array
+  // drives the "top campaigns" panel under the same column.
   distinct_products?: number
+  campaigns?: CampaignRow[]
 }
 type Combined = {
   orders: number
@@ -315,7 +327,11 @@ function ChannelColumn({
         />
       )}
 
-      <TopProducts products={data.products ?? []} />
+      {variant === 'legacy' ? (
+        <TopCampaigns campaigns={data.campaigns ?? []} />
+      ) : (
+        <TopProducts products={data.products ?? []} />
+      )}
     </section>
   )
 }
@@ -328,6 +344,60 @@ function StatTile({ label, value, sub }: { label: string; value: string; sub: st
       </p>
       <p className="text-xl md:text-3xl font-semibold text-white mt-2 tabular-nums">{value}</p>
       <p className="text-[10px] md:text-xs text-zinc-600 mt-1">{sub}</p>
+    </div>
+  )
+}
+
+function TopCampaigns({ campaigns }: { campaigns: CampaignRow[] }) {
+  return (
+    <div className="bg-zinc-900 border border-zinc-800 rounded-xl overflow-hidden">
+      <div className="px-4 md:px-5 py-3 border-b border-zinc-800">
+        <p className="text-xs md:text-sm font-semibold text-white">Top campaigns</p>
+        <p className="text-[10px] md:text-xs text-zinc-500 mt-0.5">
+          Historical orders rolled up to the campaign they were attributed to.
+        </p>
+      </div>
+      {campaigns.length === 0 ? (
+        <p className="px-4 md:px-5 py-6 text-xs text-zinc-500">
+          No campaign-attributed historical orders.
+        </p>
+      ) : (
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-zinc-800 bg-zinc-950/40">
+                <th className="text-left px-4 md:px-5 py-2 text-[10px] md:text-[11px] font-medium text-zinc-500 uppercase tracking-wide">
+                  Campaign
+                </th>
+                <th className="text-right px-2 py-2 text-[10px] md:text-[11px] font-medium text-zinc-500 uppercase tracking-wide">
+                  Orders
+                </th>
+                <th className="text-right px-4 md:px-5 py-2 text-[10px] md:text-[11px] font-medium text-zinc-500 uppercase tracking-wide">
+                  Revenue
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              {campaigns.map((c, i) => (
+                <tr key={c.campaign_id ?? i} className="border-b border-zinc-800/50 last:border-0">
+                  <td className="px-4 md:px-5 py-2 text-zinc-200">
+                    <span className="block truncate max-w-[180px] md:max-w-[260px]">
+                      {c.campaign_name ?? '—'}
+                    </span>
+                    {c.legacy_code && (
+                      <span className="text-[10px] text-zinc-600 font-mono">{c.legacy_code}</span>
+                    )}
+                  </td>
+                  <td className="px-2 py-2 text-right text-zinc-200 tabular-nums">{fmtInt(c.orders)}</td>
+                  <td className="px-4 md:px-5 py-2 text-right text-zinc-300 tabular-nums">
+                    {fmtUsd(c.revenue, true)}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
     </div>
   )
 }

@@ -11,6 +11,8 @@ const STORES = [
   { value: 'shopify_legacy', label: 'Shopify (legacy)' },
   { value: 'gumroad',        label: 'Gumroad' },
   { value: 'isod',           label: 'ISOD' },
+  { value: 'indiegogo',      label: 'Indiegogo' },
+  { value: 'kickstarter',    label: 'Kickstarter' },
   { value: 'wix',            label: 'Wix' },
 ] as const
 

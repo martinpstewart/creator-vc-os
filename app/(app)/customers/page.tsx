@@ -10,7 +10,7 @@ import StoreFilter, { type StoreValue } from '@/components/StoreFilter'
 // from a 'use client' module gives the server a proxy, not an array,
 // so .includes(...) blows up. Types are erased at compile time so
 // the type-only import above is fine.
-const STORE_VALUES_RUNTIME = ['shopify', 'shopify_legacy', 'gumroad', 'isod', 'wix'] as const
+const STORE_VALUES_RUNTIME = ['shopify', 'shopify_legacy', 'gumroad', 'isod', 'indiegogo', 'kickstarter', 'wix'] as const
 import ClickableRow from '@/components/ClickableRow'
 
 function fmt(n: number | string | null, currency = false) {
@@ -101,6 +101,12 @@ export default async function CustomersPage({
                 ...((c.campaign_orders_detail as CampaignDetail[]) ?? []),
                 ...((c.raw_orders_detail as CampaignDetail[]) ?? []),
                 ...((c.isod_orders_detail as CampaignDetail[]) ?? []),
+                // Historic platforms (indiegogo / kickstarter / wix /
+                // shopify_legacy / gumroad). Without this branch,
+                // customers whose only attribution is via historic
+                // imports show an empty Campaigns column even though
+                // they're tied to ISOTLAH / ISOD 80's / etc.
+                ...((c.historic_orders_detail as CampaignDetail[]) ?? []),
               ]
               const customerCampaigns = [...new Map(all.map(x => [x.campaign_id, x])).values()]
 

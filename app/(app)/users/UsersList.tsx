@@ -4,7 +4,7 @@ import { useState } from 'react'
 import { createClient } from '@/lib/supabase-browser'
 import { useAuth } from '@/components/AuthProvider'
 import type { Role } from '@/lib/auth'
-import { UserPlus, Trash2 } from 'lucide-react'
+import { UserPlus, Trash2, Mail, Check } from 'lucide-react'
 
 export type UserRow = {
   user_id: string
@@ -72,6 +72,9 @@ export default function UsersList({ initialUsers }: { initialUsers: UserRow[] })
   const [pendingId, setPendingId] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [showInvite, setShowInvite] = useState(false)
+  // user_id -> 'just sent' flash so the button briefly turns into a checkmark.
+  // Cleared on a timer so re-clicks don't stack flashes.
+  const [sentFlash, setSentFlash] = useState<Set<string>>(new Set())
 
   async function changeRole(user_id: string, role: Role) {
     setPendingId(user_id)
@@ -112,6 +115,33 @@ export default function UsersList({ initialUsers }: { initialUsers: UserRow[] })
         u.user_id === user_id ? { ...u, display_name: next || null } : u,
       ),
     )
+  }
+
+  async function sendMagicLink(user_id: string, email: string) {
+    setPendingId(user_id)
+    setError(null)
+    // Same redirectTo treatment as invite — bake the recipient's
+    // reachable app URL into the link, not window.location.origin
+    // (see invite() for why).
+    const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? 'https://creator-vc-os.vercel.app'
+    const { error: e } = await supabase.functions.invoke('admin-send-magic-link', {
+      body: { email, redirectTo: `${appUrl}/login` },
+    })
+    setPendingId(null)
+    if (e) {
+      setError(await extractEdgeError(e))
+      return
+    }
+    // Flash a check next to the row for 2s so the admin gets visible
+    // confirmation without a modal.
+    setSentFlash((prev) => new Set(prev).add(user_id))
+    setTimeout(() => {
+      setSentFlash((prev) => {
+        const next = new Set(prev)
+        next.delete(user_id)
+        return next
+      })
+    }, 2000)
   }
 
   async function revoke(user_id: string, email: string) {
@@ -295,22 +325,47 @@ export default function UsersList({ initialUsers }: { initialUsers: UserRow[] })
                   <td className="px-6 py-4 text-zinc-400">{fmtDate(u.last_sign_in_at)}</td>
                   <td className="px-6 py-4 text-zinc-400">{fmtDate(u.user_created_at)}</td>
                   <td className="px-6 py-4 text-right">
-                    <button
-                      type="button"
-                      onClick={() => void revoke(u.user_id, u.email)}
-                      disabled={busy || isSelf || !u.role}
-                      title={
-                        isSelf
-                          ? "You can't revoke your own role"
-                          : !u.role
-                            ? 'No role to revoke'
-                            : 'Revoke role'
-                      }
-                      className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-xs text-zinc-300 bg-zinc-800/60 hover:bg-red-950 hover:text-red-300 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
-                    >
-                      <Trash2 size={13} strokeWidth={1.75} />
-                      Revoke
-                    </button>
+                    <div className="inline-flex items-center gap-1.5">
+                      <button
+                        type="button"
+                        onClick={() => void sendMagicLink(u.user_id, u.email)}
+                        disabled={busy || isSelf}
+                        title={
+                          isSelf
+                            ? "You can't send yourself a magic link"
+                            : 'Email a fresh sign-in link'
+                        }
+                        className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-xs text-zinc-300 bg-zinc-800/60 hover:bg-sky-950 hover:text-sky-300 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                      >
+                        {sentFlash.has(u.user_id) ? (
+                          <>
+                            <Check size={13} strokeWidth={2} className="text-emerald-400" />
+                            Sent
+                          </>
+                        ) : (
+                          <>
+                            <Mail size={13} strokeWidth={1.75} />
+                            Send link
+                          </>
+                        )}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => void revoke(u.user_id, u.email)}
+                        disabled={busy || isSelf || !u.role}
+                        title={
+                          isSelf
+                            ? "You can't revoke your own role"
+                            : !u.role
+                              ? 'No role to revoke'
+                              : 'Revoke role'
+                        }
+                        className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-xs text-zinc-300 bg-zinc-800/60 hover:bg-red-950 hover:text-red-300 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                      >
+                        <Trash2 size={13} strokeWidth={1.75} />
+                        Revoke
+                      </button>
+                    </div>
                   </td>
                 </tr>
               )

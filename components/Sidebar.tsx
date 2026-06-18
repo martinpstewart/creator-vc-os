@@ -3,7 +3,7 @@
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import Logo from '@/components/Logo'
-import { Home, Users, Clapperboard, LogOut, Sparkles, Mail, Package, UserCog, Ticket, Settings } from 'lucide-react'
+import { Home, Users, Clapperboard, LogOut, Sparkles, Mail, Package, UserCog, Ticket, Settings, User } from 'lucide-react'
 import { useAuth } from './AuthProvider'
 import { canAccess, isOwner, type Screen } from '@/lib/auth'
 import ThemeToggle from './ThemeToggle'
@@ -76,6 +76,18 @@ export default function Sidebar({ onNavigate }: { onNavigate?: () => void } = {}
       </nav>
       <div className="px-3 py-4 border-t border-zinc-800 space-y-0.5">
         <ThemeToggle variant="full" />
+        <Link
+          href="/profile"
+          onClick={onNavigate}
+          className={`flex items-center gap-2.5 px-3 py-2.5 rounded-md text-sm transition-colors ${
+            pathname === '/profile'
+              ? 'bg-zinc-800 text-white font-medium'
+              : 'text-zinc-400 hover:text-white hover:bg-zinc-800/50'
+          }`}
+        >
+          <User size={15} strokeWidth={1.75} />
+          My profile
+        </Link>
         <button
           onClick={handleSignOut}
           className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-md text-sm text-zinc-400 hover:text-white hover:bg-zinc-800/50 transition-colors"
