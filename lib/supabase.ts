@@ -155,7 +155,37 @@ type CustomerRow = {
   total_count: number
 }
 
-// Customers list — uses RPC so spend is based on actual Shopify raw_orders (not Backerkit summary)
+// Customers list — uses RPC so spend is based on actual Shopify raw_orders (not Backerkit summary).
+// Cached: 600s — the underlying get_customers_list jumped from 1.4s to
+// ~7s during C Chat's customer_summary refactor, which lights up
+// Vercel's 10s function ceiling on Hobby. unstable_cache uses the
+// arguments as the cache key (search + page + size + campaigns +
+// stores), so each filter combination caches independently for 10 min.
+const getCustomersCached = unstable_cache(
+  async (
+    search: string | null,
+    page: number,
+    pageSize: number,
+    campaignIds: number[] | null,
+    stores: string[] | null,
+  ) =>
+    withRetry(async () => {
+      const { data, error } = await supabase.rpc('get_customers_list', {
+        p_search: search,
+        p_page: page,
+        p_page_size: pageSize,
+        p_campaign_ids: campaignIds,
+        p_stores: stores,
+      })
+      if (error) throw error
+      const rows = (data ?? []) as CustomerRow[]
+      const total = rows.length > 0 ? Number(rows[0].total_count) : 0
+      return { customers: rows, total }
+    }, 'getCustomersCached'),
+  ['customers-list-v2'],
+  { revalidate: 600, tags: ['customers-list'] },
+)
+
 export async function getCustomers(
   search?: string,
   page = 1,
@@ -163,19 +193,13 @@ export async function getCustomers(
   campaignIds?: number[],
   stores?: string[],
 ) {
-  return withRetry(async () => {
-    const { data, error } = await supabase.rpc('get_customers_list', {
-      p_search: search ?? null,
-      p_page: page,
-      p_page_size: pageSize,
-      p_campaign_ids: campaignIds && campaignIds.length > 0 ? campaignIds : null,
-      p_stores: stores && stores.length > 0 ? stores : null,
-    })
-    if (error) throw error
-    const rows = (data ?? []) as CustomerRow[]
-    const total = rows.length > 0 ? Number(rows[0].total_count) : 0
-    return { customers: rows, total }
-  }, 'getCustomers')
+  return getCustomersCached(
+    search ?? null,
+    page,
+    pageSize,
+    campaignIds && campaignIds.length > 0 ? campaignIds : null,
+    stores && stores.length > 0 ? stores : null,
+  )
 }
 
 // Per-customer per-campaign order line items (for customer detail click-through)
@@ -347,37 +371,51 @@ export async function getCampaignsHistoricTotals() {
   }, 'getCampaignsHistoricTotals')
 }
 
-// Single customer detail — uses RPC so total_spend reflects actual Shopify line items, not Backerkit
+// Single customer detail — uses RPC so total_spend reflects actual
+// Shopify line items, not Backerkit. Cached: 600s, keyed by email.
+// get_customer_detail runs ~1.1s warm but spikes during the live DB
+// consolidation; caching prevents Vercel function timeouts on
+// previously-viewed customers (e.g. the support team re-opening a
+// ticket twice in a row).
+type CustomerDetail = {
+  id: number
+  email: string
+  full_name: string | null
+  first_name: string | null
+  last_name: string | null
+  phone: string | null
+  total_orders: number
+  total_spend: number
+  total_line_items: number
+  total_quantity_purchased: number
+  has_campaign_orders: boolean
+  has_raw_orders: boolean
+  has_isod_orders: boolean
+  has_historic_orders: boolean
+  shipping_address_1: string | null
+  shipping_address_2: string | null
+  shipping_city: string | null
+  shipping_zip: string | null
+  shipping_country: string | null
+  shipping_country_code: string | null
+  campaign_orders_detail: unknown
+  raw_orders_detail: unknown
+  isod_orders_detail: unknown
+  historic_orders_detail: unknown
+}
+
+const getCustomerByEmailCached = unstable_cache(
+  async (email: string): Promise<CustomerDetail | null> =>
+    withRetry(async () => {
+      const { data, error } = await supabase.rpc('get_customer_detail', { p_email: email })
+      if (error) throw error
+      if (!data || data.length === 0) return null
+      return data[0] as CustomerDetail
+    }, 'getCustomerByEmailCached'),
+  ['customer-detail-v2'],
+  { revalidate: 600, tags: ['customer-detail'] },
+)
+
 export async function getCustomerByEmail(email: string) {
-  return withRetry(async () => {
-    const { data, error } = await supabase.rpc('get_customer_detail', { p_email: email })
-    if (error) throw error
-    if (!data || data.length === 0) return null
-    return data[0] as {
-    id: number
-    email: string
-    full_name: string | null
-    first_name: string | null
-    last_name: string | null
-    phone: string | null
-    total_orders: number
-    total_spend: number
-    total_line_items: number
-    total_quantity_purchased: number
-    has_campaign_orders: boolean
-    has_raw_orders: boolean
-    has_isod_orders: boolean
-    has_historic_orders: boolean
-    shipping_address_1: string | null
-    shipping_address_2: string | null
-    shipping_city: string | null
-    shipping_zip: string | null
-    shipping_country: string | null
-    shipping_country_code: string | null
-    campaign_orders_detail: unknown
-    raw_orders_detail: unknown
-    isod_orders_detail: unknown
-    historic_orders_detail: unknown
-    }
-  }, 'getCustomerByEmail')
+  return getCustomerByEmailCached(email)
 }
