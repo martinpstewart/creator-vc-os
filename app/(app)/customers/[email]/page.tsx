@@ -112,6 +112,7 @@ export default async function CustomerDetailPage({
               customer.has_campaign_orders && 'campaign',
               customer.has_raw_orders && 'direct',
               customer.has_isod_orders && 'ISOD',
+              customer.has_historic_orders && 'historic',
             ].filter(Boolean).join(' · ') || 'no orders'}
           </p>
         </div>

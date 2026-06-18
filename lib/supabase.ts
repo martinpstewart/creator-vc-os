@@ -344,6 +344,7 @@ export async function getCustomerByEmail(email: string) {
     has_campaign_orders: boolean
     has_raw_orders: boolean
     has_isod_orders: boolean
+    has_historic_orders: boolean
     shipping_address_1: string | null
     shipping_address_2: string | null
     shipping_city: string | null
