@@ -346,8 +346,9 @@ export async function getCampaignHistoricBreakdown(campaignId: number) {
   }, 'getCampaignHistoricBreakdown')
 }
 
-// One-shot rollup of historic_orders per campaign — for the campaigns
-// list page so it can combine live + historic in a single render.
+// One-shot rollup of historic_orders per campaign — kept for any
+// callers that still want the historic-only slice directly. The
+// /campaigns list now reads from getCampaignsList() instead.
 export type HistoricCampaignTotal = {
   campaign_id: number
   orders: number
@@ -362,6 +363,32 @@ export async function getCampaignsHistoricTotals() {
     return (data ?? []) as HistoricCampaignTotal[]
   }, 'getCampaignsHistoricTotals')
 }
+
+// Campaigns list page — backed by aa_02_crm.campaigns_list_snapshot
+// (refreshed every 10 min by pg_cron). Single fetch replaces
+// getCampaigns + getCampaignStats + getCampaignsHistoricTotals on
+// /campaigns. The underlying snapshot read is ~4ms; the unstable_cache
+// layer keeps the Vercel function fast even when the snapshot RPC has
+// to traverse middleware + auth on a cold start.
+export type CampaignsListRow = {
+  campaign_id: number
+  campaign_name: string
+  legacy_code: string | null
+  total_orders: number
+  total_customers: number
+  total_revenue: number | string
+  has_historic: boolean
+}
+export const getCampaignsList = unstable_cache(
+  () =>
+    withRetry(async () => {
+      const { data, error } = await supabase.rpc('get_campaigns_list')
+      if (error) throw error
+      return (data ?? []) as CampaignsListRow[]
+    }, 'getCampaignsList'),
+  ['campaigns-list-v1'],
+  { revalidate: 600, tags: ['campaigns-list'] },
+)
 
 // Single customer detail — uses RPC so total_spend reflects actual
 // Shopify line items, not Backerkit. Cached: 600s, keyed by email.

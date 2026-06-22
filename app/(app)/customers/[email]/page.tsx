@@ -112,14 +112,6 @@ export default async function CustomerDetailPage({
         <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-4 md:p-5">
           <p className="text-[11px] md:text-xs text-zinc-500 uppercase tracking-wide font-medium">Orders</p>
           <p className="text-xl md:text-2xl font-semibold text-white mt-2">{customer.total_orders}</p>
-          <p className="text-[10px] md:text-xs text-zinc-600 mt-1">
-            {[
-              customer.has_campaign_orders && 'campaign',
-              customer.has_raw_orders && 'direct',
-              customer.has_isod_orders && 'ISOD',
-              customer.has_historic_orders && 'historic',
-            ].filter(Boolean).join(' · ') || 'no orders'}
-          </p>
         </div>
         <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-4 md:p-5">
           <p className="text-[11px] md:text-xs text-zinc-500 uppercase tracking-wide font-medium">Shipping Address</p>
