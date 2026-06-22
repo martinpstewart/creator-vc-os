@@ -1,33 +1,34 @@
-# NEXT — current state of the world
+# NEXT — Creator VC OS rolling handover
+_Last updated: 2026-06-22 (after AE Campaign 2 import + orphan re-match)_
 
-_Last updated 22 June 2026 by C Chat._
+## Just completed
+- **AE Campaign 2 imported** (batch `shopify_ae_2024_c2`): 10,485 orders, $1,113,309.26, 11,059 lines, +7,390 customers. New product 135 `ISOT-BOOK-NP` (campaign 9). 3 prior orphans re-matched.
 
-Read this file first. Skim the dated session docs only if you need detail.
+## Current key numbers
+- historic_orders: 99,779 · historic_order_lines: 121,579
+- customers: 73,930 · contacts: 94,061
+- orphan backlog (`contact_found=false`, all no-email): **1,705**
 
-## What's done
+## On the horizon (open)
+- **ISOD consolidation Phase 1** — migrate `isod_orders` (campaign 2, ~6,206) into `historic_orders`; gate was clear, awaiting execution.
+- **Drop retired tables** — `campaign_orders`, `campaign_order_lines`, `customer_campaign_orders` + archives (after ISOD consolidation).
+- **Emailless link-only durability (§3.2)** — 101 orders resolved link-only (no email backfilled) at risk of `contact_found` reverting on re-evaluation. Open decision on making durable. _(Note: AE C2 re-matches used durable resolution + payload audit markers, so they are not at this risk.)_
+- **Orphan backlog (1,705)** — no single-candidate address matches remain; revisit only if a new source supplies emails for KS/IGG fulfilment rows.
+- **Shelby Oaks (campaign 13)** — provenance/sourcing docs still needed.
+- **Remaining James ingestions** — additional historical CSVs outstanding.
+- **`shipping_amount` backfill** — still NULL for older batches incl. AE C2.
+- **Email sending system** — Amazon SES + Unlayer (Project 286722) for 100k+ sends; replaces Omnisend (~£18k/yr).
+- **Microsites V2** — consent + double opt-in.
+- **CSV ingestion tool for James.**
+- **nl-query Edge Function (v5)** — schema-context overhaul pending.
+- **`payhere_secret`** — single point of failure for hourly poll; replace with dedicated service key.
+- **Webhook signing secret** — pasted in a prior transcript; flagged for rotation.
+- **GitHub MCP write access** — still read-only (push → 403). Needs App installation with Contents: read & write on `martinpstewart/creator-vc-os` to enable direct commits from C Chat. Until then, handover commits go via Claude Code / manual paste.
 
-- **TerrorBytes C1+2 supplement imported (22 Jun).** The James file "TerrorBytes Campaign 1 +2" was ~99% already in the DB (most of it landed earlier as batch `terrorbytes_c12_2026_06`, 691 orders). A dedup hunt found **15 genuinely-new paid orders**, imported as batch `terrorbytes_c12_2026_06_supplement` (IDs `tb_c12_2026-0692…0706`, $687.85, 17 lines: 13→camp 5, 3→camp 1, 1→camp 3). All customers/contacts pre-existed. `historic_orders` 89,279 → 89,294. Full detail + reusable dedup method in [2026-06-22-terrorbytes-c12-supplement.md](2026-06-22-terrorbytes-c12-supplement.md). **Most remaining James files will be the same shape — dedup hunts, not bulk imports.**
-- **Snapshot architecture is live.** `home_dashboard_impl` and `get_customers_list` no longer compute on read — they SELECT from `aa_02_crm.dashboard_snapshot` (5 min cron) and `aa_02_crm.customer_list_snapshot` (10 min cron). The heavy aggregator is now `home_dashboard_compute()`. Cron jobs 4 + 5 in `cron.job` table. Manual refresh: `public.refresh_dashboard_snapshot()` / `public.refresh_customer_list_snapshot()`. Full detail in [2026-06-18-snapshot-architecture.md](2026-06-18-snapshot-architecture.md). The PWA was timing out at Vercel's 10s ceiling before this landed; sub-100ms now.
-- **C Chat handover V8 imported** into [2026-06-18-c-chat-handover-v8.md](2026-06-18-c-chat-handover-v8.md). Covers the Part III C2 import, AE-2022 import, orphan resolution passes, snapshot read-path, shipping_amount column. Still the structural canonical base.
-- **Badge-fix commit gate cleared.** The `has_historic_orders` KPI badge fix is at commit `5e54f4f` on `origin/main` (committed 18 June 2026). ISOD consolidation can proceed.
-- **Dashboard bucket-label fix** is shipped at commit `cb54388`. The new historic `source_platform = 'shopify'` (ISOT 2022) now routes into the Shopify column on the dashboard.
-
-## What's open
-
-### Owned by C Chat (database / data)
-
-- **ISOD consolidation Phase 1.** Fold the 6,206 `isod_orders` into `historic_orders` (`source_platform='isod'`, batch `isod_1995_legacy`). Design doc done, gate is clear. Trigger via existing migration plan in `ISOD_Consolidation_Design_2026_06_18.docx`. After fold: call `public.refresh_customer_list_snapshot()` to update the snapshot.
-- **DROP retired tables.** `campaign_orders`, `campaign_order_lines`, `aa_02_crm.customer_campaign_orders` + their `public._*_archive` siblings. Currently empty and safe.
-- **Emailless link-only flag durability.** The 101 §3.2 resolutions from V8 were link-only — `payload.contact_resolved_via='name_zip_match'` marker set, email NOT backfilled. Decide whether to make any contact_found recheck marker-aware OR backfill emails. Until decided, an email-driven recheck would revert the flag.
-- **Campaign 13 (Shelby Oaks) provenance.** Contacts-only marketing audience (~13k). No orders / no products. Confirm import provenance.
-- **Remaining historic ingestions** from James's master index. **Treat each as a dedup hunt, not a bulk import** — the source exports overlap heavily with what's already loaded. Run the duplicate fingerprint per V8 §3.5, plus the two refinements from the 22 Jun session: (a) match email + time-proximity (±1 day), never exact second — Shopify exports carry mixed `+0000`/`+0100` offsets; (b) check ALL campaigns + `raw_orders`, since upsell-only orders attribute to the upsell's home campaign.
-- **`wood565497` NULL-line artifact.** Pre-existing header with zero lines: `source_order_id 5729424867605`, 2024-02-22, $49.99, batch `terrorbytes_2026_05_27`. Stray from the 27-May TerrorBytes import (not the 22-Jun supplement). A "historic_orders with no lines" sweep would catch it; left untouched pending Mart's call.
-- **`shipping_amount` backfill** for earlier batches if Robin ever wants shipping reporting. Currently only `shopify_isod3_part3_2022_c2` is populated.
-
-### Owned by Claude Code (frontend / app)
-
-- **Suspense-per-card refactor on home dashboard** (Tier 1.3 from the perf options). Would make cold loads near-instant by streaming each channel column independently. Lower priority now that the snapshots return in 1.5ms — but the dashboard still does ~80kB of HTML render at once.
-- **Customer detail snapshotting** (or splitting `get_customer_detail` so it's not a 1.1s query). `getCustomerByEmail` still uses `unstable_cache` as a band-aid.
+## Reusable learnings added this session
+- Shopify export variant: **Email repeated on every line; header = `Total`/`Paid at` present, NOT Email.** Never detect headers by Email for this shape.
+- `products`/`customers`/`customer_historic_orders` identity sequences can sit **behind `max(id)`** → `setval` before inserts that rely on identity.
+- Customer↔historic-order linkage (`customer_historic_orders`) is **not auto-maintained** — must be populated per import, followed by bucketed `refresh_customer_aggregates` then both snapshots.- **Customer detail snapshotting** (or splitting `get_customer_detail` so it's not a 1.1s query). `getCustomerByEmail` still uses `unstable_cache` as a band-aid.
 - **Owner-callable "Refresh now" button** on `/settings` that calls both refresh RPCs. Useful for C Chat to manually invalidate after big imports without needing SQL access.
 - **Vercel project transfer to Robin** (V8 §7 build/platform).
 - **Migrate off Robin's personal Freshdesk API key** to a service key (V8 §7).
