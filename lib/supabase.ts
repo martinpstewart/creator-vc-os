@@ -147,9 +147,37 @@ type CustomerRow = {
 }
 
 // Customers list — backed by aa_02_crm.customer_list_snapshot
-// (refreshed every 10 min by pg_cron). The RPC is a thin SELECT
-// against an indexed table now, so we don't layer unstable_cache
-// on top — the DB IS the cache.
+// (refreshed every 10 min by pg_cron). The snapshot RPC reads in
+// ~180ms, but on Vercel Hobby a cold serverless cold-start + role
+// lookup + this RPC + getCampaigns can still drift past the 10s
+// function timeout. Layering unstable_cache on top doesn't compromise
+// freshness — the DB snapshot already enforces a 10-min staleness
+// contract — and turns repeat hits into sub-50ms responses.
+const getCustomersCached = unstable_cache(
+  async (
+    search: string | null,
+    page: number,
+    pageSize: number,
+    campaignIds: number[] | null,
+    stores: string[] | null,
+  ) =>
+    withRetry(async () => {
+      const { data, error } = await supabase.rpc('get_customers_list', {
+        p_search: search,
+        p_page: page,
+        p_page_size: pageSize,
+        p_campaign_ids: campaignIds,
+        p_stores: stores,
+      })
+      if (error) throw error
+      const rows = (data ?? []) as CustomerRow[]
+      const total = rows.length > 0 ? Number(rows[0].total_count) : 0
+      return { customers: rows, total }
+    }, 'getCustomersCached'),
+  ['customers-list-v3'],
+  { revalidate: 600, tags: ['customers-list'] },
+)
+
 export async function getCustomers(
   search?: string,
   page = 1,
@@ -157,19 +185,13 @@ export async function getCustomers(
   campaignIds?: number[],
   stores?: string[],
 ) {
-  return withRetry(async () => {
-    const { data, error } = await supabase.rpc('get_customers_list', {
-      p_search: search ?? null,
-      p_page: page,
-      p_page_size: pageSize,
-      p_campaign_ids: campaignIds && campaignIds.length > 0 ? campaignIds : null,
-      p_stores: stores && stores.length > 0 ? stores : null,
-    })
-    if (error) throw error
-    const rows = (data ?? []) as CustomerRow[]
-    const total = rows.length > 0 ? Number(rows[0].total_count) : 0
-    return { customers: rows, total }
-  }, 'getCustomers')
+  return getCustomersCached(
+    search ?? null,
+    page,
+    pageSize,
+    campaignIds && campaignIds.length > 0 ? campaignIds : null,
+    stores && stores.length > 0 ? stores : null,
+  )
 }
 
 // Per-customer per-campaign order line items (for customer detail click-through)

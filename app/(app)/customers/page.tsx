@@ -14,9 +14,10 @@ const STORE_VALUES_RUNTIME = ['shopify', 'shopify_legacy', 'gumroad', 'isod', 'i
 import ClickableRow from '@/components/ClickableRow'
 
 // Bump Vercel's default 10s function timeout. get_customers_list is
-// ~1.4s warm but the page also pulls getCampaigns + auth check.
-// Cold misses behind a slow Supabase node can drift past 10s and
-// surface as FUNCTION_INVOCATION_TIMEOUT.
+// ~180ms warm (snapshot-backed) and getCustomers wraps it in
+// unstable_cache (600s revalidate), so the page is normally fast.
+// The 60s bump is belt-and-braces for serverless cold starts on
+// Hobby, which silently caps at 10s but doesn't hurt to declare.
 export const maxDuration = 60
 
 function fmt(n: number | string | null, currency = false) {
