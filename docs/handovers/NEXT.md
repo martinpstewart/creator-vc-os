@@ -1,41 +1,41 @@
-# NEXT.md — Creator VC OS
+# NEXT — Creator VC OS
 
-_Last updated: 2026-06-23 (C Chat)_
+**Supabase:** `xwokhafcllstcnlcberv` (eu-west-2) · connector **"Creator VC OS"** only
+**Last updated:** 23 June 2026
 
-## Just completed
-- **Aliens Expanded Collector's Edition import** (batch `AE_CE_2025`): 2,346 orders /
-  2,584 lines / $233,429.27 gross; campaign 4 revenue $185,268.71; cross-sell units
-  at $0 to campaigns 8/9/14; 6 new products (ids 137–142); 538 new customers,
-  528 new contacts; aggregates refreshed; 0 orphans. Verified, staging dropped.
-- **Pro upgrade**: project was Unhealthy on Free `t4g.nano` (CPU ~91%, burst credits
-  exhausted) — app login + MCP both timing out. Upgraded to Pro; recovered. Data intact.
+---
 
-## Action required (front-end / Claude Code)
-- **Dashboard shows stale numbers** — DB + `dashboard_snapshot` are CURRENT and already
-  include AE CE (verified: live-built payload == stored snapshot; 2,346/$233k present in
-  the Shopify bucket). Staleness is the **Vercel/Next.js ISR cache**. Fix = revalidate /
-  redeploy the dashboard route. No DB action needed.
+## Last session (23 June 2026)
+- **ISOD 95-99 Shopify Campaign 1 — NOT IMPORTED (duplicate).** File is the same 2025 Shopify store already live as **campaign 2 (`ISOD_95`)** in `isod_orders` (file = May 15–Jun 16 2025; isod runs to Nov 2025, 6,206 orders — more complete). Decision: archive, no import. Full record: `ISOD_9599_Duplicate_Decision_2026_06_23.md`.
+- Read-only session, **no DB changes**.
+- Connector note: "Creator VC OS" did not load on first `tool_search`; needed a toggle/retry. Verify with `current_database()` + a known count at the start of every session (multiple Supabase connectors share `mcp.supabase.com` — Tweakease / FreeFlight / Music-Hub are the wrong projects).
 
-## Corrections to prior notes
-- `refresh_dashboard_snapshot()` is **NO LONGER a no-op**. It now delegates to
-  `aa_02_crm.refresh_dashboard_snapshot()` → `public.build_home_dashboard_payload()`,
-  writing a real payload to `aa_02_crm.dashboard_snapshot` (cron every 5 min). The old
-  "self-copying no-op / builder absent" note is obsolete — remove from the backlog.
+---
 
-## Snapshot architecture (reference)
-- `dashboard_snapshot` ← `build_home_dashboard_payload()` — buckets by source_platform:
-  shopify (incl. shopify_legacy) + live raw; gumroad; "shopify_legacy"/other =
-  crowdfunding + isod_orders. Per-campaign breakdown is the OTHER bucket only.
-- `customer_list_snapshot` ← `refresh_customer_list_snapshot()` (cron */10).
-- `campaigns_list_snapshot` ← `refresh_campaigns_list_snapshot()` (cron 1/11/21/…).
-- All three self-heal on cron; UI surfaces are snapshot-backed → **after any import,
-  the data lands in the snapshots at next cron, but the deployed pages need a
-  front-end revalidate to display it.** Add this step to the import runbook.
+## Immediate / next imports
+- **Remaining James master-index ingestions** — overlap-fingerprint **before** each (per import protocol). Check **all three order homes** — `isod_orders`, `raw_orders`, `historic_orders` — not just `historic_orders`+`source_file`. The 95-99 case proved the live DB can already hold an entire "new" file. Watch the recurring-franchise pattern (same documentary as crowdfunding + later Shopify = separate campaigns).
+- **raw_orders era reminder:** webhook era is **2026-02-24 onward**. Pre-2026 Shopify files do not overlap raw_orders by date; the live dedup surface for them is `historic_orders` + `isod_orders`.
 
-## Carried forward
-- GitHub write access (403) — handover commits still manual / via Claude Code.
-- ISOD consolidation Phase 1 (`isod_orders` camp 2, ~6,206 → historic_orders).
-- Retire deprecated tables (`campaign_orders`, etc.) — gated on ISOD consolidation.
-- Microsites V2 (consent + double opt-in); Freshdesk historic XML backfill (~127 files);
-  emailless orphan backlog (~1,705); `nl-query` schema-context Fix A.
-- Watch Pro compute headroom under normal webhook load.
+## Order-table consolidation programme
+- **campaign_orders (Step 1, DONE):** DROP the three empty tables + scratch/archive tables next clean cycle.
+- **isod_orders (Step 2, DESIGNED, GATED):** fold 6,206 orders / 8,117 lines into `historic_orders` (`source_platform='isod'`, batch `isod_1995_legacy`). Design: `ISOD_Consolidation_Design_2026_06_18.docx`.
+  - **Gate:** Claude Code's `has_historic_orders` KPI-badge fix is deployed to prod but **uncommitted to git** — commit/push before Phase 1.
+  - **Carry-in from 95-99 session:** camp 2 has **zero `products` rows**, and `isod_order_lines.line_sku` is NULL (SKUs in `sku_assigned`/`sku_after_correction`) with add-on/cross-sell lines un-priced. If richer SKU+price detail is ever wanted for camp 2, that's an **enrichment** pass from the 95-99 file — not a re-import.
+
+## Data & provenance
+- **Emailless link-only flag durability:** 101 link-only resolutions — make `contact_found` recheck marker-aware (`payload.contact_resolved_via='name_zip_match'`) **or** backfill matched emails. Until then an email-driven recheck could revert the flag (junction/aggregates safe).
+- **Remaining emailless:** ~1,709 (5 ambiguous; rest no counterpart). Fuzzier matching only (partial name / address-line / zip-prefix). Re-run name+zip / name+street sweep opportunistically after each large customer-adding import.
+- **Campaign 13 (Shelby Oaks):** contacts-only (~13k), no orders/products — confirm provenance.
+- **shipping_amount:** populated for `shopify_isod3_part3_2022_c2` only; backfill earlier batches from payload if shipping reporting wanted.
+- **Customer-dedup candidate:** Rachel Green pair (customers 66684 / 66685).
+
+## Build / platform
+- **Email sending:** Amazon SES + Unlayer (Project 286722) replacing Omnisend; `aa_03_marketing` ready. Microsites V2 (consent + double opt-in). CSV ingestion tool for James's historic data.
+- **Freshdesk:** "Ticket Updates" automation rule; Film→campaign mapping; historical XML backfill (~127 files); migrate off Robin's personal API key.
+- **Dashboard RPC bucket-label fix:** `shopify_legacy` currently routing into the `shopify` KPI bucket.
+- **`refresh_dashboard_snapshot()`:** genuine aggregation builder still to locate/restore from migration history (current fn is a self-copying no-op).
+- **Handover items:** Vercel project transfer to Robin; replace `payhere_secret` (Mart's personal key) with a service key.
+- **GitHub write access:** still 403 (`Contents: write` not granted on `martinpstewart/creator-vc-os`). Handover commits manual or via Claude Code until fixed.
+
+---
+*Confidential — V88 / Creator VC OS · Supabase `xwokhafcllstcnlcberv`*
