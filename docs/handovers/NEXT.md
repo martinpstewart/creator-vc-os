@@ -27,4 +27,15 @@ _Last updated: 2026-06-23 (C Chat)_
   shopify (incl. shopify_legacy) + live raw; gumroad; "shopify_legacy"/other =
   crowdfunding + isod_orders. Per-campaign breakdown is the OTHER bucket only.
 - `customer_list_snapshot` ← `refresh_customer_list_snapshot()` (cron */10).
--
+- `campaigns_list_snapshot` ← `refresh_campaigns_list_snapshot()` (cron 1/11/21/…).
+- All three self-heal on cron; UI surfaces are snapshot-backed → **after any import,
+  the data lands in the snapshots at next cron, but the deployed pages need a
+  front-end revalidate to display it.** Add this step to the import runbook.
+
+## Carried forward
+- GitHub write access (403) — handover commits still manual / via Claude Code.
+- ISOD consolidation Phase 1 (`isod_orders` camp 2, ~6,206 → historic_orders).
+- Retire deprecated tables (`campaign_orders`, etc.) — gated on ISOD consolidation.
+- Microsites V2 (consent + double opt-in); Freshdesk historic XML backfill (~127 files);
+  emailless orphan backlog (~1,705); `nl-query` schema-context Fix A.
+- Watch Pro compute headroom under normal webhook load.
