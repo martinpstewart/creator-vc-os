@@ -367,9 +367,13 @@ export async function getCampaignsHistoricTotals() {
 // Campaigns list page — backed by aa_02_crm.campaigns_list_snapshot
 // (refreshed every 10 min by pg_cron). Single fetch replaces
 // getCampaigns + getCampaignStats + getCampaignsHistoricTotals on
-// /campaigns. The underlying snapshot read is ~4ms; the unstable_cache
-// layer keeps the Vercel function fast even when the snapshot RPC has
-// to traverse middleware + auth on a cold start.
+// /campaigns.
+//
+// The RPC returns in ~4ms so we deliberately do NOT layer unstable_cache
+// on top — the DB IS the cache. Going through Next.js Data Cache would
+// add cold-miss latency (~50-200ms) without any freshness benefit, AND
+// would delay updates from the cron refresh. Same pattern as
+// getHomeDashboardCached above.
 export type CampaignsListRow = {
   campaign_id: number
   campaign_name: string
@@ -379,16 +383,13 @@ export type CampaignsListRow = {
   total_revenue: number | string
   has_historic: boolean
 }
-export const getCampaignsList = unstable_cache(
-  () =>
-    withRetry(async () => {
-      const { data, error } = await supabase.rpc('get_campaigns_list')
-      if (error) throw error
-      return (data ?? []) as CampaignsListRow[]
-    }, 'getCampaignsList'),
-  ['campaigns-list-v1'],
-  { revalidate: 600, tags: ['campaigns-list'] },
-)
+export async function getCampaignsList() {
+  return withRetry(async () => {
+    const { data, error } = await supabase.rpc('get_campaigns_list')
+    if (error) throw error
+    return (data ?? []) as CampaignsListRow[]
+  }, 'getCampaignsList')
+}
 
 // Single customer detail — uses RPC so total_spend reflects actual
 // Shopify line items, not Backerkit. Cached: 600s, keyed by email.
