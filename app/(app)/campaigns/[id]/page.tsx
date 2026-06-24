@@ -1,6 +1,6 @@
 import { Suspense } from 'react'
 import {
-  getCampaignStats,
+  getCampaignsList,
   getCampaignBackerList,
   getCampaignProducts,
   getCampaignHistoricBreakdown,
@@ -12,11 +12,13 @@ import { notFound } from 'next/navigation'
 import CampaignExports from '@/components/CampaignExports'
 import CampaignDetailTabs from '@/components/CampaignDetailTabs'
 import CampaignBackers from '@/components/CampaignBackers'
+import CustomerSearch from '@/components/CustomerSearch'
 import { SkeletonRows } from '@/components/Skeleton'
 
 export const dynamic = 'force-dynamic'
-// Bump Vercel's default 10s function timeout to insulate against
-// cold-cache spikes during the live DB consolidation.
+// All three remaining server-side RPCs (campaigns_list_snapshot,
+// get_campaign_products_v2, get_campaign_historic_breakdown) read in
+// under 600ms warm. The 60s bump is belt-and-braces for cold starts.
 export const maxDuration = 60
 
 function fmt(n: number | string | null, currency = false) {
@@ -27,33 +29,63 @@ function fmt(n: number | string | null, currency = false) {
   return new Intl.NumberFormat('en-US').format(num)
 }
 
-// Streamed inside the page via Suspense — initial 100 backers fetch is the
-// slowest call on this route (no PostgREST cache), so we let the rest of
-// the page paint first.
-async function BackersSlot({ campaignId }: { campaignId: number }) {
-  const { backers, total } = await getCampaignBackerList(campaignId, 1, 100)
-  return <CampaignBackers campaignId={campaignId} initialBackers={backers} initialTotal={total} />
+// Streamed inside the page via Suspense — even at 50ms warm, letting
+// the rest of the page paint first keeps perceived speed up while the
+// backers table queries the snapshot.
+async function BackersSlot({
+  campaignId,
+  initialPage,
+  initialSearch,
+}: {
+  campaignId: number
+  initialPage: number
+  initialSearch: string
+}) {
+  const { backers, total } = await getCampaignBackerList(
+    campaignId,
+    initialPage,
+    100,
+    initialSearch || undefined,
+  )
+  return (
+    <CampaignBackers
+      campaignId={campaignId}
+      initialBackers={backers}
+      initialTotal={total}
+      initialPage={initialPage}
+      initialSearch={initialSearch}
+    />
+  )
 }
 
 export default async function CampaignDetailPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ id: string }>
+  searchParams: Promise<{ q?: string; page?: string }>
 }) {
-  const { id } = await params
+  const [{ id }, sp] = await Promise.all([params, searchParams])
   const campaignId = parseInt(id, 10)
   if (isNaN(campaignId)) notFound()
 
+  const searchQ = (sp.q ?? '').trim()
+  const initialPage = Math.max(1, parseInt(sp.page ?? '1', 10) || 1)
+
   // Defensive: every per-RPC fetch falls back to an empty/null result
-  // instead of throwing the whole page into the error boundary. This
-  // is what /tickets does too — a single transient backend hiccup
-  // shouldn't blank the entire campaign detail. Failures are logged
-  // for diagnosis; the user sees a partially-populated page rather
-  // than "Something went wrong".
-  const [allStats, products, historicBreakdown, role] =
+  // instead of throwing the whole page into the error boundary. A
+  // single transient backend hiccup shouldn't blank the entire campaign
+  // detail. Failures are logged; the user sees a partially-populated
+  // page rather than "Something went wrong".
+  //
+  // Note: we read the campaign headline from campaigns_list_snapshot
+  // (0.15ms reader) instead of the old get_campaign_stats_v3 (10s).
+  // total_revenue on the snapshot ALREADY combines live Shopify + ISOD
+  // + historic CSV imports — we do NOT add historicTotals on top.
+  const [allCampaigns, products, historicBreakdown, role] =
     await Promise.all([
-      getCampaignStats().catch((e) => {
-        console.error('[campaigns/[id]] getCampaignStats failed', e)
+      getCampaignsList().catch((e) => {
+        console.error('[campaigns/[id]] getCampaignsList failed', e)
         return []
       }),
       getCampaignProducts(campaignId).catch((e) => {
@@ -68,13 +100,11 @@ export default async function CampaignDetailPage({
     ])
   const showRevenue = role === 'admin'
 
-  const campaign = allStats.find(c => c.campaign_id === campaignId)
+  const campaign = allCampaigns.find((c) => c.campaign_id === campaignId)
   if (!campaign) notFound()
 
-  // Sum historic rollups across platforms for the per-platform
-  // breakdown table — display only; the v3 stats RPC already folds
-  // historic + ISOD into total_orders / total_customers, so we do NOT
-  // add this on top for the headline tiles.
+  // Historic breakdown table — separate from the headline tiles, which
+  // already include historic in their totals via the snapshot.
   const historicTotals = historicBreakdown.reduce(
     (acc, r) => {
       acc.orders += Number(r.orders)
@@ -86,18 +116,13 @@ export default async function CampaignDetailPage({
     { orders: 0, customers: 0, revenue: 0, units: 0 },
   )
 
-  // Headline figures from v3 — already covers live Shopify + ISOD +
-  // historic CSV imports. Revenue adds historic on top (v3.total_spend
-  // captures live Shopify lines + ISOD price_paid only). Same shape as
-  // the campaigns list page after the double-count fix.
   const combinedOrders  = Number(campaign.total_orders ?? 0)
   const combinedBackers = Number(campaign.total_customers ?? 0)
-  const combinedRevenue = Number(campaign.total_spend ?? 0) + historicTotals.revenue
+  // Snapshot already merges historic + live; do NOT add historicTotals.
+  const combinedRevenue = Number(campaign.total_revenue ?? 0)
   const avgSpend = combinedRevenue > 0 && combinedBackers > 0
     ? combinedRevenue / combinedBackers
     : null
-  // Units now come from the unified products RPC, which itself sums
-  // live Shopify + historic + ISOD line quantities. Counts once.
   const totalUnits = products.reduce((s, p) => s + Number(p.units || 0), 0)
   const distinctProducts = products.length
 
@@ -109,9 +134,12 @@ export default async function CampaignDetailPage({
         </Link>
       </div>
 
-      <div className="mb-6 md:mb-8">
-        <h1 className="text-xl md:text-2xl font-semibold text-white">{campaign.campaign_name}</h1>
-        <p className="text-sm text-zinc-500 mt-1">{fmt(combinedOrders)} orders</p>
+      <div className="mb-6 md:mb-8 flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h1 className="text-xl md:text-2xl font-semibold text-white">{campaign.campaign_name}</h1>
+          <p className="text-sm text-zinc-500 mt-1">{fmt(combinedOrders)} orders</p>
+        </div>
+        <CustomerSearch defaultValue={searchQ || undefined} />
       </div>
 
       {/* KPI cards — figures combine live (Shopify webhook) + historic
@@ -146,23 +174,15 @@ export default async function CampaignDetailPage({
         </div>
       </div>
 
-      {/* Historic breakdown — only renders if this campaign has imported
-          orders. For campaign 5 (TerrorBytes) this IS the campaign;
-          for campaigns 3 / 1 it supplements the live numbers. */}
       {historicBreakdown.length > 0 && (
-        <HistoricOrdersBreakdown rows={historicBreakdown} showRevenue={showRevenue} />
+        <HistoricOrdersBreakdown rows={historicBreakdown} showRevenue={showRevenue} totals={historicTotals} />
       )}
 
-      {/* Export buttons */}
       <div className="mb-6 md:mb-8">
         <p className="text-xs text-zinc-500 uppercase tracking-wide font-medium mb-3">Export</p>
         <CampaignExports campaignId={campaignId} campaignName={campaign.campaign_name} />
       </div>
 
-      {/* Tabbed Products / Backers — Products is the unified list across
-          live Shopify + historic CSV imports + ISOD lines, with per-product
-          revenue (admin only). Totals at the foot ladder up to the
-          campaign-level revenue figure above. */}
       <CampaignDetailTabs
         products={products}
         productCount={distinctProducts}
@@ -170,7 +190,7 @@ export default async function CampaignDetailPage({
         showRevenue={showRevenue}
         backersSlot={
           <Suspense fallback={<SkeletonRows rows={6} />}>
-            <BackersSlot campaignId={campaignId} />
+            <BackersSlot campaignId={campaignId} initialPage={initialPage} initialSearch={searchQ} />
           </Suspense>
         }
       />
@@ -178,16 +198,10 @@ export default async function CampaignDetailPage({
   )
 }
 
-// Per-platform rollup over historic_orders for one campaign. Shopify (legacy)
-// gets the friendly label; the others use a capitalised version of the raw
-// source_platform value.
 const HISTORIC_LABEL: Record<string, string> = {
   shopify_legacy: 'Shopify (legacy)',
   gumroad: 'Gumroad',
   wix: 'Wix',
-}
-function labelForSource(s: string): string {
-  return HISTORIC_LABEL[s] ?? s.charAt(0).toUpperCase() + s.slice(1)
 }
 function HistoricOrdersBreakdown({
   rows,
@@ -195,6 +209,7 @@ function HistoricOrdersBreakdown({
 }: {
   rows: HistoricBreakdownRow[]
   showRevenue: boolean
+  totals: { orders: number; customers: number; revenue: number; units: number }
 }) {
   return (
     <section className="mb-6 md:mb-8">

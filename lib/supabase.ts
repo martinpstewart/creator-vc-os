@@ -219,15 +219,21 @@ export async function getCustomerCampaignOrders(email: string, campaignId: numbe
 
 export type BackerRow = { email: string; full_name: string | null; total_spend: number | null; order_count: number; total_count: number }
 
-// Backer list. Server-side paginated via the v2 RPC: attribution view
-// filtered by product_campaign_id, ISOD fallback baked into the SQL.
-export async function getCampaignBackerList(campaignId: number, page = 1, pageSize = 100) {
+// Backer list — backed by aa_02_crm.campaign_backers_snapshot (refreshed
+// every 10 min by pg_cron). The snapshot reader supports optional ILIKE
+// search via a trigram index on `search_text`. Sub-50ms even on the
+// largest campaign; replaces the ~15.86s on-the-fly UNION + CROSS JOIN
+// LATERAL that get_campaign_backer_list_combined used to do.
+export async function getCampaignBackerList(
+  campaignId: number,
+  page = 1,
+  pageSize = 100,
+  search?: string,
+) {
   return withRetry(async () => {
-    // Combined RPC unions raw_orders / order_entitlements / isod_orders
-    // / historic_orders so campaigns dominated by historic (TerrorBytes,
-    // FPS cross-sells) show their actual backer list.
-    const { data, error } = await supabase.rpc('get_campaign_backer_list_combined', {
+    const { data, error } = await supabase.rpc('get_campaign_backers_list', {
       p_campaign_id: campaignId,
+      p_search: search && search.trim().length > 0 ? search.trim() : null,
       p_page: page,
       p_page_size: pageSize,
     })

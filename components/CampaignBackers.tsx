@@ -1,7 +1,8 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import Link from 'next/link'
+import { useRouter, usePathname, useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase-browser'
 import ClickableRow from './ClickableRow'
 import { useAuth } from './AuthProvider'
@@ -28,12 +29,20 @@ export default function CampaignBackers({
   campaignId,
   initialBackers,
   initialTotal,
+  initialPage = 1,
+  initialSearch = '',
 }: {
   campaignId: number
   initialBackers: BackerRow[]
   initialTotal: number
+  initialPage?: number
+  initialSearch?: string
 }) {
-  const [page, setPage] = useState(1)
+  const router = useRouter()
+  const pathname = usePathname()
+  const searchParams = useSearchParams()
+
+  const [page, setPage] = useState(initialPage)
   const [backers, setBackers] = useState<BackerRow[]>(initialBackers)
   const [total, setTotal] = useState(initialTotal)
   const [loading, setLoading] = useState(false)
@@ -43,6 +52,17 @@ export default function CampaignBackers({
   const { role } = useAuth()
   const showSpend = role === 'admin'
 
+  // Re-sync from server when the parent re-renders with new search /
+  // initial page (e.g. user searches → URL changes → server re-fetches
+  // initial 100 → these props change). Without this the component
+  // would still show whatever the previous client-paginated state was.
+  useEffect(() => {
+    setBackers(initialBackers)
+    setTotal(initialTotal)
+    setPage(initialPage)
+    setFetchError(null)
+  }, [initialBackers, initialTotal, initialPage, initialSearch])
+
   const totalPages = Math.ceil(total / PAGE_SIZE)
 
   async function goToPage(p: number) {
@@ -50,9 +70,12 @@ export default function CampaignBackers({
     setLoading(true)
     setFetchError(null)
     try {
-      // Combined RPC — same return shape but includes historic_orders.
-      const { data, error } = await supabase.rpc('get_campaign_backer_list_combined', {
+      // Calls the snapshot reader directly with the same search term
+      // the server rendered with — staying in the same "search session"
+      // across pagination.
+      const { data, error } = await supabase.rpc('get_campaign_backers_list', {
         p_campaign_id: campaignId,
+        p_search: initialSearch && initialSearch.trim().length > 0 ? initialSearch.trim() : null,
         p_page: p,
         p_page_size: PAGE_SIZE,
       })
@@ -66,6 +89,13 @@ export default function CampaignBackers({
       const t = rows.length > 0 ? Number(rows[0].total_count) : total
       setTotal(t)
       setPage(p)
+
+      // Reflect the page in the URL so refresh / share / back-button works.
+      const params = new URLSearchParams(searchParams.toString())
+      if (p > 1) params.set('page', String(p))
+      else params.delete('page')
+      const qs = params.toString()
+      router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false })
     } catch (e) {
       console.error('[CampaignBackers] unexpected error', e)
       setFetchError(e instanceof Error ? e.message : String(e))
@@ -79,8 +109,15 @@ export default function CampaignBackers({
 
   return (
     <div className="bg-zinc-900 border border-zinc-800 rounded-xl">
-      <div className="px-6 py-4 border-b border-zinc-800 flex items-center justify-between">
-        <h2 className="text-sm font-semibold text-white">Backers</h2>
+      <div className="px-6 py-4 border-b border-zinc-800 flex items-center justify-between gap-3 flex-wrap">
+        <h2 className="text-sm font-semibold text-white">
+          Backers
+          {initialSearch && (
+            <span className="ml-2 text-xs font-normal text-zinc-400">
+              · matching "{initialSearch}"
+            </span>
+          )}
+        </h2>
         <span className="text-xs text-zinc-500">
           {total > PAGE_SIZE ? `${fmt(start)}–${fmt(end)} of ${fmt(total)}` : `${fmt(total)} total`}
         </span>
@@ -151,7 +188,9 @@ export default function CampaignBackers({
           )}
         </>
       ) : (
-        <p className="px-6 py-8 text-center text-zinc-500 text-sm">No backers found</p>
+        <p className="px-6 py-8 text-center text-zinc-500 text-sm">
+          {initialSearch ? `No backers match "${initialSearch}".` : 'No backers found'}
+        </p>
       )}
     </div>
   )
