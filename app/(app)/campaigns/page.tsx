@@ -1,4 +1,4 @@
-import { getCampaignsList, getPayingCustomerCount } from '@/lib/supabase'
+import { getCampaignsList } from '@/lib/supabase'
 import { getCurrentRole } from '@/lib/auth-server'
 import Link from 'next/link'
 import { Clapperboard } from 'lucide-react'
@@ -21,27 +21,24 @@ function fmt(n: number | string | null, currency = false) {
 
 export default async function CampaignsPage() {
   // Single snapshot fetch: aa_02_crm.campaigns_list_snapshot already
-  // merges v3 stats + historic totals + canonical campaign list, so
-  // zero-order campaigns still appear and orders/customers/revenue
-  // don't double-count historic. Refreshed every 10 min by pg_cron.
+  // merges v3 stats + historic totals + canonical campaign list + the
+  // canonical paying-customer count for the header. Refreshed every 10
+  // min by pg_cron. Replaces what used to be 5 round-trips.
   //
   // Role decides whether revenue columns appear at all — team/support
   // get backers + orders only.
-  const [rows, role, payingCustomers] = await Promise.all([
+  const [rows, role] = await Promise.all([
     getCampaignsList(),
     getCurrentRole(),
-    // Canonical paying-customer count — used for the header total so
-    // it matches /home and /customers. Summing per-campaign rows would
-    // over-count cross-campaign buyers.
-    getPayingCustomerCount(),
   ])
   const showRevenue = role === 'admin'
 
   const totalRevenue = rows.reduce((s, r) => s + Number(r.total_revenue), 0)
-  // totalBackers comes from the canonical paying-customer view, NOT
-  // the sum of per-campaign rows below — those sum to a higher number
-  // because anyone who backs multiple campaigns is counted in each.
-  const totalBackers = payingCustomers
+  // totalBackers comes from the canonical paying-customer view (same
+  // value repeated on every snapshot row), NOT the sum of per-campaign
+  // rows below — those sum to a higher number because anyone who backs
+  // multiple campaigns is counted in each.
+  const totalBackers = rows[0]?.paying_customer_count ?? 0
 
   return (
     <div className="p-4 md:p-8">

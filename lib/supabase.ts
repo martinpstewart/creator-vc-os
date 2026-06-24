@@ -382,6 +382,10 @@ export type CampaignsListRow = {
   total_customers: number
   total_revenue: number | string
   has_historic: boolean
+  // Same value repeated on every row — denormalised so the page
+  // doesn't need a separate get_paying_customer_count() round-trip
+  // (that RPC takes ~3s, this snapshot read is 0.15ms).
+  paying_customer_count: number
 }
 export async function getCampaignsList() {
   return withRetry(async () => {
