@@ -38,6 +38,27 @@
 - Full `public.refresh_campaign_backers_snapshot()` kept ONLY for the nightly reconcile + an
   explicit admin force-rebuild action (none exists yet).
 
+### Matview + dashboard-gate round (later same day — Claude Code)
+- **Pulled 7 round-2 migrations** for repo parity (all already live in prod):
+  `20260625091251_…_step3_first_run` (the step 3 I had skipped in the round-1 sweep),
+  `20260625093625_attribution_matview_step1_create`,
+  `20260625093708_…_step2_refresh_cron`,
+  `20260625093857_…_step3a_repoint_campaign_stats`,
+  `20260625094045_…_step3b_repoint_dashboard`,
+  `20260625095518_dashboard_change_gate_step1_function`,
+  `20260625095649_…_step2_cron_cutover`.
+- **Repointed the 6 remaining attribution reads to the matview** in a new migration
+  (`20260625100000_repoint_remaining_attribution_reads_to_matview`). All 6 are analytics surfaces
+  (Products tab, catalogue units strip, Ask schema-context view, plus three RPCs with no active
+  callers); none are on a real-time-after-write path so 15-min matview staleness is acceptable. Used
+  the safe `pg_get_functiondef`/`pg_get_viewdef` + `regexp_replace` with `\m…\M` word-boundary
+  pattern (catches both schema-qualified FROMs and bare `v_raw_order_line_attribution.col`
+  references in the view body, without colliding with `mv_raw_order_line_attribution`). Verified all
+  6 now reference the matview. `get_campaign_products_v2(1)` 580ms → 290ms; `get_campaign_units_sold_v2(1)` ~580ms → 20ms.
+- **App-side audit clean:** zero TS/TSX callers of the full backer rebuild, zero readers of the
+  per-row `refreshed_at` on either snapshot, no dashboard "updated every 30 min" UI copy to fix
+  (the only "Last updated" label in the app is on `SendDetail.tsx`, marketing-side, unrelated).
+
 ## Last session (23 June 2026)
 - **SlasherTrash Shopify Campaign 1 — IMPORTED → new campaign 15 (`SLASHERTRASH_DOC`).** 2,892 orders /
   3,478 lines / $254,979.67 (24 Jul–21 Aug 2025), `source_platform=shopify_legacy`, batch
@@ -105,15 +126,19 @@
 - **GitHub write access:** still 403 (`Contents: write` not granted on `martinpstewart/creator-vc-os`).
   Handover commits manual or via Claude Code until fixed.
 
-## Snapshot performance (post-A1, post-A2)
-- **Dashboard / campaigns-list snapshot compute.** `build_home_dashboard_payload()` and
-  `get_campaign_stats_v3()` are slow (heavy compute, cheap write). Throttle holds them apart but
-  they're not cheap — candidates for incremental/materialised aggregates if the IO/CPU profile needs
-  flattening further. **Being optimised next** (C Chat) — see
-  `claude-code-handover-2026-06-25-matview.md`.
-- **Compute add-on review.** Project is on Pro but still **Nano** compute (43 Mbps baseline IO).
-  Re-evaluate after the matview work — the goal is to get off the IO ceiling by cutting work, not by
-  upsizing.
+## Snapshot performance (post-A1 / A2 / matview / gate)
+- **Dashboard rebuild still ~32s when it does run.** The gate eliminates most rebuilds, but each
+  real one is still heavy. If the profile needs flattening further the lever is the historic
+  re-aggregation — `build_home_dashboard_payload` scans `historic_orders`/`historic_order_lines`
+  6–8× per build, plus `v_paying_customer_emails` (~4.8s `UNION DISTINCT`). Candidate: scan
+  historic once into a temp table per build, derive the shopify/gumroad/other rollups from it.
+  Optional — polish, not firefighting.
+- **`mv_raw_order_line_attribution` refresh cost.** Full `CONCURRENTLY` recompute (~7–8s) every
+  15 min. If `raw_orders` write volume grows, consider gating the refresh on a `raw_orders`
+  change signal rather than unconditional cadence.
+- **Compute add-on review.** Still on **Nano** (43 Mbps baseline IO). With A1/A2 + matview +
+  gate the heavy rebuilds are gone and IO pressure is well off the ceiling — re-evaluate
+  whether an upsize is even needed before spending on it.
 
 ---
 *Confidential — V88 / Creator VC OS · Supabase `xwokhafcllstcnlcberv`*
