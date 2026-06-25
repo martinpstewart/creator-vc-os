@@ -23,6 +23,21 @@
   `aa_02_crm.snapshot_watermarks` for the list-level cursor) is uncontested — any future "list last
   updated at X" indicator should read the watermark, not the per-row column.
 
+### A2 follow-on (later same day — Claude Code)
+- **`campaign_backers_snapshot` is now incremental** (live in prod). Public RPC:
+  `public.refresh_campaign_backers_snapshot_incremental()` → int rows processed. Cron job 7 →
+  `*/5 * * * *`; new job 9 → `32 3 * * *` nightly full reconcile. Snapshot schema + row contents
+  unchanged.
+- **Three A2 migrations transcribed** into `supabase/migrations/`:
+  `20260625091132_incremental_campaign_backers_step1_functions`,
+  `20260625091245_…_step2_seed_watermark`,
+  `20260625091319_…_step4_cron_cutover` (step 3 was a one-time catch-up run, not preserved).
+- **App-side audit clean:** zero TS/TSX callers of `refresh_campaign_backers_snapshot`. Same
+  `refreshed_at` semantics flip as A1 — for the backers list use `max(refreshed_at)` or
+  `snapshot_watermarks WHERE name='campaign_backers'` for a "last updated at X" indicator.
+- Full `public.refresh_campaign_backers_snapshot()` kept ONLY for the nightly reconcile + an
+  explicit admin force-rebuild action (none exists yet).
+
 ## Last session (23 June 2026)
 - **SlasherTrash Shopify Campaign 1 — IMPORTED → new campaign 15 (`SLASHERTRASH_DOC`).** 2,892 orders /
   3,478 lines / $254,979.67 (24 Jul–21 Aug 2025), `source_platform=shopify_legacy`, batch
@@ -90,16 +105,15 @@
 - **GitHub write access:** still 403 (`Contents: write` not granted on `martinpstewart/creator-vc-os`).
   Handover commits manual or via Claude Code until fixed.
 
-## Snapshot performance (post-A1)
-- **A2 — `campaign_backers_snapshot` incremental.** Same pattern as A1: scoped per-(campaign, email)
-  builder driven by changed customers, incremental cron + nightly reconcile. 138k rows still doing a
-  full TRUNCATE+rebuild hourly — the remaining big disk-IO consumer.
+## Snapshot performance (post-A1, post-A2)
 - **Dashboard / campaigns-list snapshot compute.** `build_home_dashboard_payload()` and
   `get_campaign_stats_v3()` are slow (heavy compute, cheap write). Throttle holds them apart but
   they're not cheap — candidates for incremental/materialised aggregates if the IO/CPU profile needs
-  flattening further.
+  flattening further. **Being optimised next** (C Chat) — see
+  `claude-code-handover-2026-06-25-matview.md`.
 - **Compute add-on review.** Project is on Pro but still **Nano** compute (43 Mbps baseline IO).
-  Re-evaluate after A2 — the goal is to get off the IO ceiling by cutting work, not by upsizing.
+  Re-evaluate after the matview work — the goal is to get off the IO ceiling by cutting work, not by
+  upsizing.
 
 ---
 *Confidential — V88 / Creator VC OS · Supabase `xwokhafcllstcnlcberv`*
