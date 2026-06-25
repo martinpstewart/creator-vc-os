@@ -576,13 +576,36 @@ Deno.serve(async (req) => {
     }
   }
 
-  // ── STEP 4: Upsert customer + junction + refresh aggregates ─────────────
+  // ── STEP 4: Upsert customer + write BOTH junctions + refresh aggregates ──
+  //
+  // Gated on `email && rawOrderDbId` (NOT on campaignOrderId). The
+  // customer_raw_orders junction is the canonical link in the app's
+  // current data model and must be written even when campaign_orders
+  // didn't get a row this request — e.g. when the campaign_orders
+  // upsert fails for some reason, or when this is a campaign branch
+  // that we no longer route through campaign_orders.
+  //
+  // The customer_id is resolved by an explicit SELECT after the upsert,
+  // NOT from upsert RETURNING. Background:
+  //   - PostgREST's `.upsert(...).select(...)` returns the inserted/updated
+  //     row in most cases, but the RETURNING clause is silently empty if
+  //     the conflict path is DO NOTHING-equivalent (race condition where
+  //     another connection inserted the customer concurrently, or some
+  //     client/PG version combos).
+  //   - This is the root cause C Chat identified in the 2026-06-26 incident
+  //     where the AE C3 burst created the customer in DB but skipped every
+  //     downstream link — including the junction insert and
+  //     refresh_customer_aggregates.
+  //   - customers.email is `citext` + unique, so the SELECT is a single
+  //     index lookup; running it unconditionally is cheap.
   let customerSaved = false;
   let customerError: unknown = null;
+  let resolvedCustomerId: number | null = null;
 
-  if (email && campaignOrderId) {
+  if (email && rawOrderDbId) {
     try {
-      const { data: customerData, error: customerErr } = await supabase
+      // Upsert customer — we don't trust the RETURNING here.
+      const { error: customerErr } = await supabase
         .schema("aa_02_crm")
         .from("customers")
         .upsert(
@@ -600,23 +623,57 @@ Deno.serve(async (req) => {
             updated_at: new Date().toISOString(),
           },
           { onConflict: "email", ignoreDuplicates: false },
-        )
-        .select("id")
-        .maybeSingle();
-
+        );
       if (customerErr) {
         customerError = customerErr;
         console.error("customers upsert error", { requestId, error: customerErr, email });
-      } else if ((customerData as { id: number } | null)?.id) {
-        const customerId = (customerData as { id: number }).id;
-        await supabase
+      }
+
+      // Resolve id by email — concurrency-safe and resilient to the
+      // returning-customer case.
+      const normalisedEmail = email.toLowerCase().trim();
+      const { data: customerRow, error: selectErr } = await supabase
+        .schema("aa_02_crm")
+        .from("customers")
+        .select("id")
+        .eq("email", normalisedEmail)
+        .maybeSingle();
+      if (selectErr) {
+        customerError = customerError ?? selectErr;
+        console.error("customers select-by-email error", { requestId, error: selectErr, email });
+      }
+      resolvedCustomerId = (customerRow as { id: number } | null)?.id ?? null;
+
+      if (resolvedCustomerId) {
+        // The fix: junction between customer and the raw_order we just
+        // inserted. Idempotent via the (customer_id, raw_order_id) unique
+        // constraint, ignoreDuplicates=true so concurrent writes from a
+        // burst sale don't error.
+        const { error: junctionErr } = await supabase
           .schema("aa_02_crm")
-          .from("customer_campaign_orders")
+          .from("customer_raw_orders")
           .upsert(
-            { customer_id: customerId, campaign_order_id: campaignOrderId },
-            { onConflict: "customer_id,campaign_order_id", ignoreDuplicates: true },
+            { customer_id: resolvedCustomerId, raw_order_id: rawOrderDbId },
+            { onConflict: "customer_id,raw_order_id", ignoreDuplicates: true },
           );
-        await supabase.rpc("refresh_customer_aggregates", { p_customer_id: customerId });
+        if (junctionErr) {
+          customerError = customerError ?? junctionErr;
+          console.error("customer_raw_orders upsert error", { requestId, error: junctionErr });
+        }
+
+        // Legacy junction — kept for backwards-compat. Only runs if the
+        // campaign_orders upsert above produced a row this request.
+        if (campaignOrderId) {
+          await supabase
+            .schema("aa_02_crm")
+            .from("customer_campaign_orders")
+            .upsert(
+              { customer_id: resolvedCustomerId, campaign_order_id: campaignOrderId },
+              { onConflict: "customer_id,campaign_order_id", ignoreDuplicates: true },
+            );
+        }
+
+        await supabase.rpc("refresh_customer_aggregates", { p_customer_id: resolvedCustomerId });
         customerSaved = true;
       }
     } catch (e) {
