@@ -1,16 +1,21 @@
-// freshdesk-webhook — routes through public.freshdesk_ingest RPC
-// (aa_04_support stays unexposed). Sanitises Freshdesk's messy JSON,
-// normalises one ticket, hands it to the ingest RPC (p_log_unchanged
-// = true so same-status updates still log a comment event). Also
-// captures raw payload to public._freshdesk_capture during transition.
-// verify_jwt = false.
+// freshdesk-webhook — ACK-FIRST routing through public.freshdesk_ingest RPC
+// (aa_04_support stays unexposed).
 //
-// v9 (description fix): the prior regex fallback hard-coded
-// description: null. JSON.parse + sanitizeJson both fail in practice
-// for every Freshdesk payload we receive, so the regex fallback is
-// the hot path. We now capture description in that fallback too,
-// with a follow-up unescape of common JSON escape sequences so the
-// stored text reads naturally on the ticket detail page.
+// v15 (ack-first): the webhook now returns 200 to Freshdesk IMMEDIATELY,
+// before touching the database. The raw-payload capture and the
+// freshdesk_ingest RPC are moved into a background task via
+// EdgeRuntime.waitUntil(), so Freshdesk never waits on Postgres and can
+// no longer 504 us when the DB is under load. The request body is read
+// inline (the stream must be consumed before we respond); all parsing +
+// DB work happens after the response is sent. Any background failure is
+// logged and swallowed — Freshdesk has already been acked.
+//
+// Parsing logic (sanitizeJson / regexExtract / unescapeJsonString) is
+// unchanged from v9: JSON.parse + sanitizeJson both fail in practice for
+// Freshdesk's payloads, so the regex fallback is the hot path and
+// captures description too.
+//
+// verify_jwt = false (set in function config, not here).
 
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 
@@ -54,7 +59,7 @@ function unescapeJsonString(s: string): string {
     .replace(/\\n/g, "\n")
     .replace(/\\r/g, "\r")
     .replace(/\\t/g, "\t")
-    // \\uXXXX → char. Run before \\\\ → \\ so the order doesn't matter.
+    // \uXXXX → char. Run before \\ → \ so the order doesn't matter.
     .replace(/\\u([0-9a-fA-F]{4})/g, (_m, hex) => String.fromCharCode(parseInt(hex, 16)))
     .replace(/\\\\/g, "\\");
 }
@@ -75,35 +80,37 @@ function regexExtract(raw: string): Record<string, unknown> {
     requester_email: get("requester_email"), requester_name: get("requester_name"),
     company: get("company"), created_at: get("created_at"), updated_at: get("updated_at"),
     film: get("film"), order_number: get("order_number"),
-    // Was hard-coded to null pre-v9. Same regex shape as the other
-    // fields handles description's escaped quotes + newlines fine.
     description: get("description"),
   };
 }
 
-Deno.serve(async (req: Request) => {
-  const receivedAt = new Date().toISOString();
-  let rawBody = "";
+// All database work happens here, AFTER the 200 has gone back to
+// Freshdesk. Errors are logged and swallowed — the ack is already sent,
+// so a failure here never produces a 504 on Freshdesk's side.
+async function processInBackground(
+  rawBody: string,
+  receivedAt: string,
+  method: string,
+  contentType: string | null,
+): Promise<void> {
   let body: Record<string, unknown> | null = null;
-  try {
-    rawBody = await req.text();
-    if (rawBody) {
-      try { body = JSON.parse(rawBody); }
-      catch (_e) {
-        try { body = JSON.parse(sanitizeJson(rawBody)); }
-        catch (_e2) { body = regexExtract(rawBody); }
-      }
+  if (rawBody) {
+    try { body = JSON.parse(rawBody); }
+    catch (_e) {
+      try { body = JSON.parse(sanitizeJson(rawBody)); }
+      catch (_e2) { body = regexExtract(rawBody); }
     }
-  } catch (e) { console.log("freshdesk-webhook: read fail", String(e)); }
+  }
 
-  // Capture raw payload (transitional scratch table).
+  // Capture raw payload (transitional scratch table). Now off the
+  // critical path — safe to retire whenever the transition is done.
   try {
     await fetch(`${SB_URL}/rest/v1/_freshdesk_capture`, {
       method: "POST",
       headers: { ...rpcHeaders(), "Prefer": "return=minimal" },
       body: JSON.stringify({
-        received_at: receivedAt, method: req.method,
-        content_type: req.headers.get("content-type"),
+        received_at: receivedAt, method,
+        content_type: contentType,
         headers: {}, raw_body: rawBody, parsed_body: body,
       }),
     });
@@ -137,6 +144,21 @@ Deno.serve(async (req: Request) => {
       if (!rpc.ok) console.log("freshdesk-webhook: ingest failed", rpc.status, await rpc.text());
     } catch (e) { console.log("freshdesk-webhook: exception", String(e)); }
   }
+}
+
+Deno.serve(async (req: Request) => {
+  const receivedAt = new Date().toISOString();
+  const method = req.method;
+  const contentType = req.headers.get("content-type");
+
+  // The request stream must be consumed before we respond, so read the
+  // body inline. Everything after this — parse + capture + ingest — is
+  // deferred so Freshdesk gets its 200 without waiting on Postgres.
+  let rawBody = "";
+  try { rawBody = await req.text(); }
+  catch (e) { console.log("freshdesk-webhook: read fail", String(e)); }
+
+  EdgeRuntime.waitUntil(processInBackground(rawBody, receivedAt, method, contentType));
 
   return new Response(JSON.stringify({ ok: true, received_at: receivedAt }),
     { status: 200, headers: { "Content-Type": "application/json", "Connection": "keep-alive" } });

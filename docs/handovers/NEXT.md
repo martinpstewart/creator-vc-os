@@ -1,9 +1,27 @@
 # NEXT — Creator VC OS
 
 **Supabase:** `xwokhafcllstcnlcberv` (eu-west-2) · connector **"Creator VC OS"** only
-**Last updated:** 23 June 2026
+**Last updated:** 25 June 2026
 
 ---
+
+## Last session (25 June 2026 — Claude Code)
+- **Repo-parity sweep for the 25 June DB/Edge work** (everything already live in prod —
+  `xwokhafcllstcnlcberv` — this was just code-side catch-up). Brief:
+  `2026-06-25-snapshot-perf-and-freshdesk.md`.
+- **freshdesk-webhook v15** pasted into `supabase/functions/freshdesk-webhook/index.ts` (ack-first,
+  `EdgeRuntime.waitUntil()`-deferred capture + ingest). **Repo parity only — NOT redeployed via CLI**;
+  a stale deploy would revert v15.
+- **Five A1 migrations transcribed** into `supabase/migrations/`:
+  `20260625080736_throttle_and_stagger_snapshot_crons`,
+  `20260625084057_…_step1_infrastructure`,
+  `20260625084228_…_step2_functions`,
+  `20260625084413_…_step3_seed_watermark`,
+  `20260625084522_…_step5_cron_cutover`.
+- **App-side audit clean:** zero callers of `refresh_customer_list_snapshot` in the TS/TSX code, zero
+  consumers of the per-row `refreshed_at`. Nothing to repoint. The new contract (per-row `refreshed_at`,
+  `aa_02_crm.snapshot_watermarks` for the list-level cursor) is uncontested — any future "list last
+  updated at X" indicator should read the watermark, not the per-row column.
 
 ## Last session (23 June 2026)
 - **SlasherTrash Shopify Campaign 1 — IMPORTED → new campaign 15 (`SLASHERTRASH_DOC`).** 2,892 orders /
@@ -71,6 +89,17 @@
   a service key.
 - **GitHub write access:** still 403 (`Contents: write` not granted on `martinpstewart/creator-vc-os`).
   Handover commits manual or via Claude Code until fixed.
+
+## Snapshot performance (post-A1)
+- **A2 — `campaign_backers_snapshot` incremental.** Same pattern as A1: scoped per-(campaign, email)
+  builder driven by changed customers, incremental cron + nightly reconcile. 138k rows still doing a
+  full TRUNCATE+rebuild hourly — the remaining big disk-IO consumer.
+- **Dashboard / campaigns-list snapshot compute.** `build_home_dashboard_payload()` and
+  `get_campaign_stats_v3()` are slow (heavy compute, cheap write). Throttle holds them apart but
+  they're not cheap — candidates for incremental/materialised aggregates if the IO/CPU profile needs
+  flattening further.
+- **Compute add-on review.** Project is on Pro but still **Nano** compute (43 Mbps baseline IO).
+  Re-evaluate after A2 — the goal is to get off the IO ceiling by cutting work, not by upsizing.
 
 ---
 *Confidential — V88 / Creator VC OS · Supabase `xwokhafcllstcnlcberv`*
