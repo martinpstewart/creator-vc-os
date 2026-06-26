@@ -31,16 +31,24 @@ export default function KindFilter({ selected }: { selected: KindValue[] }) {
     return () => document.removeEventListener('mousedown', handle)
   }, [])
 
+  // Empty `selected` = no URL param = filter inactive = visually both
+  // kinds are checked. Toggle must work off this EFFECTIVE set, not
+  // the raw URL-derived `selected`, otherwise clicking a checked box
+  // while in the default state silently flips to "only the other one"
+  // — which is what the user just complained about.
+  const effective: KindValue[] = selected.length === 0 ? KINDS.map((k) => k.id) : selected
+
   function toggle(id: KindValue) {
-    const next: KindValue[] = selected.includes(id)
-      ? selected.filter((x) => x !== id)
-      : [...selected, id]
+    const next: KindValue[] = effective.includes(id)
+      ? effective.filter((x) => x !== id)
+      : [...effective, id]
 
     const params = new URLSearchParams(searchParams.toString())
     params.delete('page')
-    // Default state (both kinds) is encoded as "no kinds param". Single
-    // kind goes in. Empty selection is also encoded as "no kinds param"
-    // because filtering to zero kinds is never useful.
+    // "Both checked" = "filter inactive" — encoded as no URL param.
+    // Zero checked is also encoded as no URL param (filtering to no
+    // kinds returns no rows; default to All instead to avoid an
+    // empty-result trap).
     if (next.length === 0 || next.length === KINDS.length) {
       params.delete('kinds')
     } else {
@@ -48,10 +56,6 @@ export default function KindFilter({ selected }: { selected: KindValue[] }) {
     }
     router.push(`${pathname}?${params.toString()}`)
   }
-
-  // Empty selected = no filter applied = treat as "All". When the URL
-  // has no `kinds` param, both checkboxes display as checked.
-  const effective: KindValue[] = selected.length === 0 ? KINDS.map((k) => k.id) : selected
 
   const label =
     effective.length === KINDS.length
