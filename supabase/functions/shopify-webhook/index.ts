@@ -4,9 +4,42 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 const corsHeaders: Record<string, string> = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers":
-    "authorization, x-client-info, apikey, content-type, x-shopify-shop-domain, x-shopify-topic, x-shopify-webhook-id",
+    "authorization, x-client-info, apikey, content-type, x-shopify-shop-domain, x-shopify-topic, x-shopify-webhook-id, x-shopify-hmac-sha256",
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
+
+// In-function dual-auth. The function deploys with verify_jwt=false
+// so native Shopify deliveries (which can't attach an Authorization
+// header) reach the body. Accept the request if EITHER:
+//   - X-Shopify-Hmac-Sha256 header verifies against the raw body
+//     using SHOPIFY_WEBHOOK_SECRET (Shopify-native deliveries), OR
+//   - An apikey / Authorization header matches the project anon key
+//     (existing working-path relays/apps already send this).
+// Reject 401 otherwise.
+async function verifyShopifyHmac(
+  rawBody: string,
+  hmacHeader: string | null,
+  secret: string,
+): Promise<boolean> {
+  if (!hmacHeader) return false;
+  const enc = new TextEncoder();
+  const key = await crypto.subtle.importKey(
+    "raw",
+    enc.encode(secret),
+    { name: "HMAC", hash: "SHA-256" },
+    false,
+    ["sign"],
+  );
+  const sig = await crypto.subtle.sign("HMAC", key, enc.encode(rawBody));
+  const computed = btoa(String.fromCharCode(...new Uint8Array(sig)));
+  // Constant-time compare to avoid timing leaks.
+  if (computed.length !== hmacHeader.length) return false;
+  let diff = 0;
+  for (let i = 0; i < computed.length; i++) {
+    diff |= computed.charCodeAt(i) ^ hmacHeader.charCodeAt(i);
+  }
+  return diff === 0;
+}
 
 type ShopifyLineItem = {
   id: number | string;
@@ -301,6 +334,38 @@ Deno.serve(async (req) => {
     req.headers.get("x-sb-request-id") ?? req.headers.get("x-request-id") ?? null;
 
   const rawBodyText = await req.text();
+
+  // ── Dual-auth gate ────────────────────────────────────────────
+  // HMAC must be verified against the EXACT raw body string (before
+  // any parse/re-serialise) — Shopify computes its signature over the
+  // wire bytes. We've captured rawBodyText above; hash that.
+  const shopifyWebhookSecret = Deno.env.get("SHOPIFY_WEBHOOK_SECRET") ?? "";
+  const workingPathToken = Deno.env.get("SUPABASE_ANON_KEY") ?? "";
+
+  const hmacHeader = req.headers.get("x-shopify-hmac-sha256");
+  const hmacOk = shopifyWebhookSecret
+    ? await verifyShopifyHmac(rawBodyText, hmacHeader, shopifyWebhookSecret)
+    : false;
+
+  const presentedToken =
+    req.headers.get("apikey") ??
+    req.headers.get("authorization")?.replace(/^Bearer\s+/i, "") ??
+    null;
+  const tokenOk = !!workingPathToken && presentedToken === workingPathToken;
+
+  if (!hmacOk && !tokenOk) {
+    console.warn("[shopify-webhook] unauthorized", {
+      requestId,
+      hmac_present: !!hmacHeader,
+      token_present: !!presentedToken,
+      secret_configured: !!shopifyWebhookSecret,
+    });
+    return new Response(
+      JSON.stringify({ ok: false, error: "unauthorized" }),
+      { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+    );
+  }
+
   const parsed = safeJsonParse(rawBodyText);
   const payload = parsed.ok
     ? (parsed.value as Record<string, unknown>)
