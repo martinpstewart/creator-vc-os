@@ -1,7 +1,42 @@
 # NEXT — Creator VC OS
 
 **Supabase:** `xwokhafcllstcnlcberv` (eu-west-2) · connector **"Creator VC OS"** only
-**Last updated:** 25 June 2026
+**Last updated:** 26 June 2026
+
+---
+
+## BLOCKED — Shopify backfill (waiting on Admin API access)
+
+The native `orders/create` webhook had been 401'ing at the platform JWT gate since
+**2026-05-12 11:57 UTC** — see `2026-06-26-shopify-webhook-fix-and-backfill.md`.
+
+**What's done:**
+- `shopify-webhook` deployed at **v37, `verify_jwt=false`**, with in-function dual-auth
+  (HMAC against `SHOPIFY_WEBHOOK_SECRET` OR token match against `SUPABASE_ANON_KEY`). Going
+  forward, native Shopify deliveries authenticate and ingest again.
+- Replay script ready at `scripts/replay-shopify-orders.mjs` — idempotent, throttled,
+  retries 429/5xx. Just needs credentials.
+
+**What's blocked:**
+- The 12 May → 26 Jun gap (~6 weeks of orders) is unrecovered. No data source we currently
+  have access to carries full line-level orders for that window:
+  - PayHere covers 9 Jun → now (2,001 rows) but is financial-only — no line items, no
+    addresses. Also misses 12 May → 8 Jun entirely.
+  - Acutrack exports are shipping confirmations, not orders.
+- Owner of the project doesn't have Shopify backend access; needs to chase whoever does
+  (Robin / Aaron?) for a `shpat_…` Admin API token (`read_orders` + Protected customer data).
+
+**When the token arrives:**
+1. `node scripts/replay-shopify-orders.mjs --since 2026-05-12T00:00:00Z` (see brief for envs)
+2. After completion: `SELECT public.refresh_dashboard_snapshot();
+   refresh_campaigns_list_snapshot(); refresh_customer_list_snapshot();`
+3. Verify daily counts dense from 12 May onwards.
+
+**Also flagged (separate follow-ups):**
+- Campaign 7 (ISOD 70s) products are unmapped in `aa_01_campaigns.shopify_products_map` —
+  backfilled 70s orders will land in `raw_orders` but won't attribute to campaign 7 until
+  mapped (`ISOD_70s`, `THING_EXPANDED_UPSELL`, `ISOD_95_99_UPSELL`, `ISOD-9094`).
+- `get_campaign_products_v2` RPC intermittently 500s — visible in API logs.
 
 ---
 
