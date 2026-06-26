@@ -193,12 +193,18 @@ function DashboardUnavailable() {
 function HeadlineTile({ label, value }: { label: string; value: string }) {
   // Uniform "premium" treatment: navy-blue → near-black flare from
   // the top-left, faint blue border. Just the eyebrow label + big number.
+  //
+  // The value uses a fluid clamp() font size so a long currency value
+  // ("$10,747,288") scales down on narrow tiles rather than spilling
+  // out of the box at the lg+ breakpoint where the grid splits the row
+  // into 5 columns. min-w-0 prevents the grid track from being forced
+  // wider than its share by the content.
   return (
-    <div className="relative overflow-hidden rounded-xl border border-[#3B9EE8]/40 bg-gradient-to-br from-[#0e2740] via-zinc-900 to-zinc-900 p-4 md:p-5">
+    <div className="relative overflow-hidden rounded-xl border border-[#3B9EE8]/40 bg-gradient-to-br from-[#0e2740] via-zinc-900 to-zinc-900 p-4 md:p-5 min-w-0">
       <p className="text-[10px] md:text-[11px] uppercase tracking-wide font-semibold text-[#7ec3ee]">
         {label}
       </p>
-      <p className="mt-2 font-bold tabular-nums leading-tight text-white text-xl sm:text-2xl xl:text-3xl break-words">
+      <p className="mt-2 font-bold tabular-nums leading-tight text-white text-[clamp(1.125rem,1.8vw,1.875rem)]">
         {value}
       </p>
     </div>
@@ -330,12 +336,17 @@ function ChannelColumn({
 }
 
 function StatTile({ label, value, sub }: { label: string; value: string; sub: string }) {
+  // Per-channel KPI tile. The 3-channel layout at xl narrows each
+  // StatTile to ~1/6 of the viewport, so a fixed text-3xl spills out
+  // for revenue values like "$1,553,876". Fluid clamp() font size +
+  // min-w-0 on the grid item keeps the number inside the box at every
+  // breakpoint.
   return (
-    <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-4 md:p-5">
+    <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-4 md:p-5 min-w-0">
       <p className="text-[11px] md:text-xs text-zinc-500 uppercase tracking-wide font-medium">
         {label}
       </p>
-      <p className="text-xl md:text-3xl font-semibold text-white mt-2 tabular-nums">{value}</p>
+      <p className="font-semibold text-white mt-2 tabular-nums leading-tight text-[clamp(1.125rem,1.6vw,1.75rem)]">{value}</p>
       <p className="text-[10px] md:text-xs text-zinc-600 mt-1">{sub}</p>
     </div>
   )
