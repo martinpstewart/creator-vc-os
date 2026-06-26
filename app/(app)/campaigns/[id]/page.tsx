@@ -4,6 +4,8 @@ import {
   getCampaignBackerList,
   getCampaignProducts,
   getCampaignHistoricBreakdown,
+  getCampaignOrders,
+  getCampaignCatalogueProducts,
   type HistoricBreakdownRow,
 } from '@/lib/supabase'
 import { getCurrentRole } from '@/lib/auth-server'
@@ -12,13 +14,16 @@ import { notFound } from 'next/navigation'
 import CampaignExports from '@/components/CampaignExports'
 import CampaignDetailTabs from '@/components/CampaignDetailTabs'
 import CampaignBackers from '@/components/CampaignBackers'
+import CampaignOrders from '@/components/CampaignOrders'
+import ProductMultiSelect from '@/components/ProductMultiSelect'
+import DateRangeFilter from '@/components/DateRangeFilter'
 import CustomerSearch from '@/components/CustomerSearch'
 import { SkeletonRows } from '@/components/Skeleton'
 
 export const dynamic = 'force-dynamic'
-// All three remaining server-side RPCs (campaigns_list_snapshot,
-// get_campaign_products_v2, get_campaign_historic_breakdown) read in
-// under 600ms warm. The 60s bump is belt-and-braces for cold starts.
+// All four server-side RPCs (campaigns_list_snapshot, products_v2,
+// historic_breakdown, get_campaign_orders) read in under 850ms warm.
+// The 60s bump is belt-and-braces for cold starts.
 export const maxDuration = 60
 
 function fmt(n: number | string | null, currency = false) {
@@ -29,9 +34,16 @@ function fmt(n: number | string | null, currency = false) {
   return new Intl.NumberFormat('en-US').format(num)
 }
 
-// Streamed inside the page via Suspense — even at 50ms warm, letting
-// the rest of the page paint first keeps perceived speed up while the
-// backers table queries the snapshot.
+// `to` is YYYY-MM-DD; the reader uses half-open `< to`. Server-side
+// path normalises both bounds into ISO timestamps.
+function toIso(d: string | null): string | null {
+  if (!d) return null
+  return new Date(`${d}T00:00:00Z`).toISOString()
+}
+
+// Streamed inside the page via Suspense — the backers snapshot reader
+// is sub-100ms warm, but letting the rest of the page paint first
+// keeps perceived speed up.
 async function BackersSlot({
   campaignId,
   initialPage,
@@ -58,12 +70,55 @@ async function BackersSlot({
   )
 }
 
+async function OrdersSlot({
+  campaignId,
+  initialPage,
+  productIds,
+  fromDate,
+  toDate,
+  showRevenue,
+}: {
+  campaignId: number
+  initialPage: number
+  productIds: number[]
+  fromDate: string | null
+  toDate: string | null
+  showRevenue: boolean
+}) {
+  const { orders, total } = await getCampaignOrders(
+    campaignId,
+    productIds.length > 0 ? productIds : null,
+    toIso(fromDate),
+    toIso(toDate),
+    initialPage,
+    100,
+  )
+  return (
+    <CampaignOrders
+      campaignId={campaignId}
+      initialOrders={orders}
+      initialTotal={total}
+      initialPage={initialPage}
+      initialProductIds={productIds}
+      initialFrom={fromDate}
+      initialTo={toDate}
+      showRevenue={showRevenue}
+    />
+  )
+}
+
 export default async function CampaignDetailPage({
   params,
   searchParams,
 }: {
   params: Promise<{ id: string }>
-  searchParams: Promise<{ q?: string; page?: string }>
+  searchParams: Promise<{
+    q?: string
+    page?: string
+    products?: string
+    from?: string
+    to?: string
+  }>
 }) {
   const [{ id }, sp] = await Promise.all([params, searchParams])
   const campaignId = parseInt(id, 10)
@@ -71,18 +126,16 @@ export default async function CampaignDetailPage({
 
   const searchQ = (sp.q ?? '').trim()
   const initialPage = Math.max(1, parseInt(sp.page ?? '1', 10) || 1)
+  const productIds = (sp.products ?? '')
+    .split(',')
+    .map((s) => parseInt(s.trim(), 10))
+    .filter((n) => Number.isFinite(n) && n > 0)
+  const fromDate = sp.from?.trim() || null
+  const toDate = sp.to?.trim() || null
 
   // Defensive: every per-RPC fetch falls back to an empty/null result
-  // instead of throwing the whole page into the error boundary. A
-  // single transient backend hiccup shouldn't blank the entire campaign
-  // detail. Failures are logged; the user sees a partially-populated
-  // page rather than "Something went wrong".
-  //
-  // Note: we read the campaign headline from campaigns_list_snapshot
-  // (0.15ms reader) instead of the old get_campaign_stats_v3 (10s).
-  // total_revenue on the snapshot ALREADY combines live Shopify + ISOD
-  // + historic CSV imports — we do NOT add historicTotals on top.
-  const [allCampaigns, products, historicBreakdown, role] =
+  // instead of throwing the whole page into the error boundary.
+  const [allCampaigns, products, historicBreakdown, role, catalogueProducts] =
     await Promise.all([
       getCampaignsList().catch((e) => {
         console.error('[campaigns/[id]] getCampaignsList failed', e)
@@ -97,14 +150,16 @@ export default async function CampaignDetailPage({
         return []
       }),
       getCurrentRole(),
+      getCampaignCatalogueProducts(campaignId).catch((e) => {
+        console.error('[campaigns/[id]] getCampaignCatalogueProducts failed', e)
+        return [] as { id: number; name: string }[]
+      }),
     ])
   const showRevenue = role === 'admin'
 
   const campaign = allCampaigns.find((c) => c.campaign_id === campaignId)
   if (!campaign) notFound()
 
-  // Historic breakdown table — separate from the headline tiles, which
-  // already include historic in their totals via the snapshot.
   const historicTotals = historicBreakdown.reduce(
     (acc, r) => {
       acc.orders += Number(r.orders)
@@ -118,7 +173,6 @@ export default async function CampaignDetailPage({
 
   const combinedOrders  = Number(campaign.total_orders ?? 0)
   const combinedBackers = Number(campaign.total_customers ?? 0)
-  // Snapshot already merges historic + live; do NOT add historicTotals.
   const combinedRevenue = Number(campaign.total_revenue ?? 0)
   const avgSpend = combinedRevenue > 0 && combinedBackers > 0
     ? combinedRevenue / combinedBackers
@@ -142,11 +196,6 @@ export default async function CampaignDetailPage({
         <CustomerSearch defaultValue={searchQ || undefined} />
       </div>
 
-      {/* KPI cards — figures combine live (Shopify webhook) + historic
-          (Gumroad/shopify_legacy/Wix imports). Per-platform breakdown
-          rendered below if any historic activity exists.
-          For non-admin (team/support) the two revenue tiles are dropped
-          and the grid collapses to two columns. */}
       <div
         className={`grid grid-cols-2 gap-3 md:gap-4 mb-6 md:mb-8 ${
           showRevenue ? 'md:grid-cols-4' : 'md:grid-cols-2'
@@ -187,10 +236,29 @@ export default async function CampaignDetailPage({
         products={products}
         productCount={distinctProducts}
         backerCount={combinedBackers}
+        orderCount={combinedOrders}
         showRevenue={showRevenue}
         backersSlot={
           <Suspense fallback={<SkeletonRows rows={6} />}>
             <BackersSlot campaignId={campaignId} initialPage={initialPage} initialSearch={searchQ} />
+          </Suspense>
+        }
+        ordersToolbar={
+          <>
+            <ProductMultiSelect products={catalogueProducts} selected={productIds} />
+            <DateRangeFilter value={{ from: fromDate, to: toDate }} />
+          </>
+        }
+        ordersSlot={
+          <Suspense fallback={<SkeletonRows rows={6} />}>
+            <OrdersSlot
+              campaignId={campaignId}
+              initialPage={initialPage}
+              productIds={productIds}
+              fromDate={fromDate}
+              toDate={toDate}
+              showRevenue={showRevenue}
+            />
           </Suspense>
         }
       />

@@ -244,6 +244,59 @@ export async function getCampaignBackerList(
   }, 'getCampaignBackerList')
 }
 
+// Canonical product list for a campaign — drives the
+// ProductMultiSelect picker on the campaign-detail Orders tab. One
+// row per aa_01_campaigns.products row, ordered by name.
+export async function getCampaignCatalogueProducts(campaignId: number) {
+  return withRetry(async () => {
+    const { data, error } = await supabase.rpc('get_campaign_catalogue_products', {
+      p_campaign_id: campaignId,
+    })
+    if (error) throw error
+    return (data ?? []) as { id: number; name: string }[]
+  }, 'getCampaignCatalogueProducts')
+}
+
+// Per-campaign orders list — backed by aa_02_crm.campaign_orders_snapshot
+// (refreshed hourly at :25 by pg_cron). Multi-source: live raw_orders via
+// the matview, historic CSV imports, and ISOD. product_ids array enables
+// fast multi-select filtering via a GIN index. Sub-200ms with filters.
+export type CampaignOrderRow = {
+  order_key: string
+  source: string
+  order_number: string | null
+  order_date: string | null
+  email: string | null
+  customer_name: string | null
+  status: string | null
+  amount_usd: number | string | null
+  product_ids: number[]
+  total_count: number
+}
+export async function getCampaignOrders(
+  campaignId: number,
+  productIds: number[] | null,
+  startDate: string | null,
+  endDate: string | null,
+  page = 1,
+  pageSize = 100,
+) {
+  return withRetry(async () => {
+    const { data, error } = await supabase.rpc('get_campaign_orders', {
+      p_campaign_id: campaignId,
+      p_product_ids: productIds && productIds.length > 0 ? productIds : null,
+      p_start_date: startDate,
+      p_end_date: endDate,
+      p_page: page,
+      p_page_size: pageSize,
+    })
+    if (error) throw error
+    const rows = (data ?? []) as CampaignOrderRow[]
+    const total = rows.length > 0 ? Number(rows[0].total_count) : 0
+    return { orders: rows, total }
+  }, 'getCampaignOrders')
+}
+
 // All order line items for a campaign (CSV export)
 export async function getCampaignOrdersExport(campaignId: number) {
   return withRetry(async () => {

@@ -50,19 +50,25 @@ function sourceBadgeClass(s: string): string {
   }
 }
 
-type Tab = 'products' | 'backers'
+type Tab = 'products' | 'backers' | 'orders'
 
 export default function CampaignDetailTabs({
   products,
   productCount,
   backerCount,
+  orderCount,
   backersSlot,
+  ordersSlot,
+  ordersToolbar,
   showRevenue,
 }: {
   products: ProductRow[]
   productCount: number
   backerCount: number
+  orderCount: number
   backersSlot: ReactNode
+  ordersSlot: ReactNode
+  ordersToolbar: ReactNode
   showRevenue: boolean
 }) {
   const [tab, setTab] = useState<Tab>('products')
@@ -83,6 +89,12 @@ export default function CampaignDetailTabs({
           label="Backers"
           count={backerCount}
         />
+        <TabButton
+          active={tab === 'orders'}
+          onClick={() => setTab('orders')}
+          label="Orders"
+          count={orderCount}
+        />
       </div>
 
       {/* Panels */}
@@ -92,6 +104,14 @@ export default function CampaignDetailTabs({
       <div role="tabpanel" hidden={tab !== 'backers'}>
         {/* Server-rendered Suspense slot — streams in independently */}
         {backersSlot}
+      </div>
+      <div role="tabpanel" hidden={tab !== 'orders'}>
+        {/* Toolbar (product multi-select + date range) renders alongside
+            the table so URL-driven filter changes stay snappy. */}
+        <div className="mb-4 flex flex-col sm:flex-row sm:items-center sm:flex-wrap gap-3">
+          {ordersToolbar}
+        </div>
+        {ordersSlot}
       </div>
     </div>
   )
