@@ -18,8 +18,28 @@ type QueryResponse = {
   duration_ms: number
 }
 
+// Shape carried alongside the result when the user is viewing a past
+// run (tapped a Recent Queries item). Lets the UI render a "Showing
+// previous run from {timeAgo}" banner and a Re-run button, without
+// re-invoking the AI / DB query.
+type PastRunInfo = {
+  ranAt: string
+  isPartial: boolean   // true when result_truncated on the log row
+}
+
 const FUNCTION_URL = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/nl-query`
 const RECIPIENTS_STORAGE_KEY = 'creatorvc.email.recipients'
+
+function timeAgo(iso: string): string {
+  const diff = Date.now() - new Date(iso).getTime()
+  const m = Math.floor(diff / 60000)
+  if (m < 1) return 'just now'
+  if (m < 60) return `${m} minute${m === 1 ? '' : 's'} ago`
+  const h = Math.floor(m / 60)
+  if (h < 24) return `${h} hour${h === 1 ? '' : 's'} ago`
+  const d = Math.floor(h / 24)
+  return `${d} day${d === 1 ? '' : 's'} ago`
+}
 
 export default function QueryConsole() {
   const router = useRouter()
@@ -33,6 +53,10 @@ export default function QueryConsole() {
   const [exporting, setExporting] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [result, setResult] = useState<QueryResponse | null>(null)
+  // When non-null, the current `result` came from nl_query_log not from
+  // a fresh edge-function call. Drives the "Showing previous run from
+  // {time}" banner + Re-run button shown above the results table.
+  const [pastRun, setPastRun] = useState<PastRunInfo | null>(null)
   const [showSql, setShowSql] = useState(false)
   const [browserOpen, setBrowserOpen] = useState(false)
   const [recentRefresh, setRecentRefresh] = useState(0)
@@ -41,6 +65,7 @@ export default function QueryConsole() {
     if (!q.trim() || running) return
     setRunning(true)
     setError(null)
+    setPastRun(null)
     try {
       const supabase = createClient()
       const { data: { session } } = await supabase.auth.getSession()
@@ -74,6 +99,49 @@ export default function QueryConsole() {
       setRunning(false)
     }
   }, [running])
+
+  // Called by RecentQueries when the user taps a past question. We
+  // render the SAVED result from nl_query_log instead of re-running
+  // the query — saves AI credits and DB load, and matches what the
+  // user actually wanted ("show me what it returned LAST time"). If
+  // the log row predates the persistence migration (result_rows IS
+  // NULL) we fall through to a re-run with a one-time notice.
+  const showPast = useCallback((row: {
+    id: number
+    question: string
+    sql_executed: string | null
+    row_count: number | null
+    duration_ms: number | null
+    query_type: 'template' | 'generated'
+    template_name: string | null
+    created_at: string
+    result_columns: string[] | null
+    result_rows: Record<string, unknown>[] | null
+    result_truncated: boolean | null
+  }) => {
+    if (!row.result_rows || !row.result_columns) {
+      // Logged before result persistence shipped — re-run instead.
+      setQuestion(row.question)
+      setError('This question was asked before result history was enabled — re-running fresh.')
+      submit(row.question)
+      return
+    }
+    setError(null)
+    setResult({
+      rows: row.result_rows,
+      columns: row.result_columns,
+      sql: row.sql_executed ?? '',
+      query_type: row.query_type,
+      template_name: row.template_name ?? undefined,
+      truncated: row.result_truncated ?? false,
+      row_count: row.row_count ?? row.result_rows.length,
+      duration_ms: row.duration_ms ?? 0,
+    })
+    setSubmittedQuestion(row.question)
+    setQuestion('')
+    setShowSql(false)
+    setPastRun({ ranAt: row.created_at, isPartial: row.result_truncated ?? false })
+  }, [submit])
 
   const exportCsv = useCallback(async () => {
     if (!result || exporting) return
@@ -184,6 +252,28 @@ export default function QueryConsole() {
         </div>
       )}
 
+      {/* Past-run banner — only when result came from nl_query_log,
+          not a fresh edge-function call. Re-run button reuses submit()
+          which automatically clears pastRun. */}
+      {result && pastRun && (
+        <div className="bg-amber-950/30 border border-amber-900/60 rounded-xl px-4 py-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+          <div className="text-sm text-amber-200">
+            <span className="font-medium">Previous run from {timeAgo(pastRun.ranAt)}</span>
+            <span className="block text-xs text-amber-300/70 mt-0.5">
+              For: &ldquo;{submittedQuestion}&rdquo;
+              {pastRun.isPartial && ' · result truncated to first 100 rows'}
+            </span>
+          </div>
+          <button
+            onClick={() => submit(submittedQuestion)}
+            disabled={running}
+            className="w-full sm:w-auto px-4 py-2 text-xs font-bold rounded-md bg-amber-700/40 hover:bg-amber-700/60 text-amber-100 disabled:opacity-50 transition-colors whitespace-nowrap"
+          >
+            {running ? 'Running…' : 'Re-run with fresh data'}
+          </button>
+        </div>
+      )}
+
       {/* Results */}
       {result && (
         <div className="space-y-3">
@@ -248,8 +338,9 @@ export default function QueryConsole() {
         </div>
       )}
 
-      {/* Recent */}
-      <RecentQueries refreshKey={recentRefresh} onRerun={(q) => { setQuestion(q); submit(q) }} />
+      {/* Recent — tapping a row loads its stored result (or re-runs if
+          the row predates result persistence). */}
+      <RecentQueries refreshKey={recentRefresh} onShowPast={showPast} />
 
       <TemplateBrowser
         open={browserOpen}

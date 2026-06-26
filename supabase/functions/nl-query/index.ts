@@ -47,6 +47,11 @@ function jsonResponse(body: unknown, status = 200) {
   })
 }
 
+// Cap persisted result rows so the jsonb blob stays bounded. The
+// viewer (frontend) gets full VIEWER_ROW_CAP rows in the live response;
+// the past-run detail view in /query reads from the persisted slice.
+const PERSISTED_ROWS_CAP = 100
+
 async function logQuery(entry: {
   user_id: string | null
   user_email: string | null
@@ -58,6 +63,9 @@ async function logQuery(entry: {
   duration_ms: number | null
   success: boolean
   error_message: string | null
+  result_columns?: string[] | null
+  result_rows?: Record<string, unknown>[] | null
+  result_truncated?: boolean | null
 }) {
   try {
     await admin.from('nl_query_log').insert(entry)
@@ -199,7 +207,10 @@ Deno.serve(async (req) => {
     const duration = Date.now() - started
     const truncated = rows.length === rowCap // best-effort flag
 
-    // 7. Log success
+    // 7. Log success — including a capped snapshot of the result
+    // rows/columns so the past-run detail view in /query can replay
+    // them without re-executing.
+    const persistedRows = rows.slice(0, PERSISTED_ROWS_CAP)
     await logQuery({
       user_id: user.id,
       user_email: user.email ?? null,
@@ -211,6 +222,9 @@ Deno.serve(async (req) => {
       duration_ms: duration,
       success: true,
       error_message: null,
+      result_columns: columns,
+      result_rows: persistedRows,
+      result_truncated: rows.length > PERSISTED_ROWS_CAP,
     })
 
     if (isExport) {

@@ -11,9 +11,9 @@ import ThemeToggle from './ThemeToggle'
 // `screen` matches the ACCESS map in lib/auth.ts — hide an entry from a
 // role's nav and the middleware also blocks deep-linking to it.
 //
-// Order: Tickets sits under Customers (support flow), Catalogue under
-// Campaigns (product/campaign flow). Ask + Users live at the bottom —
-// power-user / admin surfaces below the day-to-day work.
+// Order: Customers → Campaigns / Catalogue (product flow) → Marketing,
+// then Tickets sits just above Ask so support + power-user surfaces
+// cluster together at the bottom of the day-to-day list.
 const nav: ReadonlyArray<{
   href: string
   label: string
@@ -22,10 +22,10 @@ const nav: ReadonlyArray<{
 }> = [
   { href: '/',          label: 'Dashboard', Icon: Home,         screen: 'dashboard' },
   { href: '/customers', label: 'Customers', Icon: Users,        screen: 'customers' },
-  { href: '/tickets',   label: 'Tickets',   Icon: Ticket,       screen: 'tickets'   },
   { href: '/campaigns', label: 'Campaigns', Icon: Clapperboard, screen: 'campaigns' },
   { href: '/catalogue', label: 'Catalogue', Icon: Package,      screen: 'catalogue' },
   { href: '/marketing', label: 'Marketing', Icon: Mail,         screen: 'marketing' },
+  { href: '/tickets',   label: 'Tickets',   Icon: Ticket,       screen: 'tickets'   },
   { href: '/query',     label: 'Ask',       Icon: Sparkles,     screen: 'query'     },
   { href: '/users',     label: 'Users',     Icon: UserCog,      screen: 'users'     },
   { href: '/settings',  label: 'Settings',  Icon: Settings,     screen: 'settings'  },
