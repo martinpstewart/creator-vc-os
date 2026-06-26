@@ -86,6 +86,7 @@ export default function CampaignOrders({
   initialProductIds,
   initialFrom,
   initialTo,
+  initialKinds,
   summary,
   showRevenue,
 }: {
@@ -96,6 +97,7 @@ export default function CampaignOrders({
   initialProductIds: number[]
   initialFrom: string | null
   initialTo: string | null
+  initialKinds: string[]
   summary: Summary
   showRevenue: boolean
 }) {
@@ -118,7 +120,7 @@ export default function CampaignOrders({
     setTotal(initialTotal)
     setPage(initialPage)
     setFetchError(null)
-  }, [initialOrders, initialTotal, initialPage, initialProductIds, initialFrom, initialTo])
+  }, [initialOrders, initialTotal, initialPage, initialProductIds, initialFrom, initialTo, initialKinds])
 
   const totalPages = Math.ceil(total / PAGE_SIZE)
 
@@ -132,6 +134,7 @@ export default function CampaignOrders({
         p_product_ids: initialProductIds.length > 0 ? initialProductIds : null,
         p_start_date: toIso(initialFrom),
         p_end_date: toIso(initialTo),
+        p_kinds: initialKinds.length > 0 ? initialKinds : null,
         p_page: p,
         p_page_size: PAGE_SIZE,
       })
@@ -161,7 +164,7 @@ export default function CampaignOrders({
 
   const start = (page - 1) * PAGE_SIZE + 1
   const end = Math.min(page * PAGE_SIZE, total)
-  const hasFilter = initialProductIds.length > 0 || !!initialFrom || !!initialTo
+  const hasFilter = initialProductIds.length > 0 || !!initialFrom || !!initialTo || initialKinds.length > 0
 
   return (
     <>

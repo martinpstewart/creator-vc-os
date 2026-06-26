@@ -288,6 +288,7 @@ export async function getCampaignOrdersSummary(
   productIds: number[] | null,
   startDate: string | null,
   endDate: string | null,
+  kinds: string[] | null,
 ) {
   return withRetry(async () => {
     const { data, error } = await supabase.rpc('get_campaign_orders_summary', {
@@ -295,6 +296,7 @@ export async function getCampaignOrdersSummary(
       p_product_ids: productIds && productIds.length > 0 ? productIds : null,
       p_start_date: startDate,
       p_end_date: endDate,
+      p_kinds: kinds && kinds.length > 0 ? kinds : null,
     })
     if (error) throw error
     const rows = (data ?? []) as CampaignOrdersSummary[]
@@ -307,6 +309,7 @@ export async function getCampaignOrders(
   productIds: number[] | null,
   startDate: string | null,
   endDate: string | null,
+  kinds: string[] | null,
   page = 1,
   pageSize = 100,
 ) {
@@ -316,6 +319,7 @@ export async function getCampaignOrders(
       p_product_ids: productIds && productIds.length > 0 ? productIds : null,
       p_start_date: startDate,
       p_end_date: endDate,
+      p_kinds: kinds && kinds.length > 0 ? kinds : null,
       p_page: page,
       p_page_size: pageSize,
     })

@@ -17,6 +17,7 @@ import CampaignDetailTabs from '@/components/CampaignDetailTabs'
 import CampaignBackers from '@/components/CampaignBackers'
 import CampaignOrders from '@/components/CampaignOrders'
 import ProductMultiSelect from '@/components/ProductMultiSelect'
+import KindFilter, { type KindValue } from '@/components/KindFilter'
 import OrdersDateRangeFilter from '@/components/OrdersDateRangeFilter'
 import CustomerSearch from '@/components/CustomerSearch'
 import { SkeletonRows } from '@/components/Skeleton'
@@ -77,6 +78,7 @@ async function OrdersSlot({
   productIds,
   fromDate,
   toDate,
+  kinds,
   showRevenue,
 }: {
   campaignId: number
@@ -84,24 +86,29 @@ async function OrdersSlot({
   productIds: number[]
   fromDate: string | null
   toDate: string | null
+  kinds: string[]
   showRevenue: boolean
 }) {
   // KPI header + page 1 fetched in parallel — both hit the same
   // snapshot table, indexed for both reads.
+  const productIdsArg = productIds.length > 0 ? productIds : null
+  const kindsArg = kinds.length > 0 ? kinds : null
   const [{ orders, total }, summary] = await Promise.all([
     getCampaignOrders(
       campaignId,
-      productIds.length > 0 ? productIds : null,
+      productIdsArg,
       toIso(fromDate),
       toIso(toDate),
+      kindsArg,
       initialPage,
       100,
     ),
     getCampaignOrdersSummary(
       campaignId,
-      productIds.length > 0 ? productIds : null,
+      productIdsArg,
       toIso(fromDate),
       toIso(toDate),
+      kindsArg,
     ),
   ])
   return (
@@ -113,6 +120,7 @@ async function OrdersSlot({
       initialProductIds={productIds}
       initialFrom={fromDate}
       initialTo={toDate}
+      initialKinds={kinds}
       summary={{
         total_orders: Number(summary.total_orders),
         total_revenue: summary.total_revenue,
@@ -135,6 +143,7 @@ export default async function CampaignDetailPage({
     products?: string
     from?: string
     to?: string
+    kinds?: string
   }>
 }) {
   const [{ id }, sp] = await Promise.all([params, searchParams])
@@ -149,6 +158,11 @@ export default async function CampaignDetailPage({
     .filter((n) => Number.isFinite(n) && n > 0)
   const fromDate = sp.from?.trim() || null
   const toDate = sp.to?.trim() || null
+  // Validate kinds against the enum so a malformed URL can't poison the RPC.
+  const kinds: KindValue[] = (sp.kinds ?? '')
+    .split(',')
+    .map((s) => s.trim().toLowerCase())
+    .filter((s): s is KindValue => s === 'digital' || s === 'physical')
 
   // Defensive: every per-RPC fetch falls back to an empty/null result
   // instead of throwing the whole page into the error boundary.
@@ -263,6 +277,7 @@ export default async function CampaignDetailPage({
         ordersToolbar={
           <>
             <ProductMultiSelect products={catalogueProducts} selected={productIds} />
+            <KindFilter selected={kinds} />
             <OrdersDateRangeFilter value={{ from: fromDate, to: toDate }} />
           </>
         }
@@ -274,6 +289,7 @@ export default async function CampaignDetailPage({
               productIds={productIds}
               fromDate={fromDate}
               toDate={toDate}
+              kinds={kinds}
               showRevenue={showRevenue}
             />
           </Suspense>
