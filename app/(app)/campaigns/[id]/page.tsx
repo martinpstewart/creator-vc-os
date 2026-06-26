@@ -5,6 +5,7 @@ import {
   getCampaignProducts,
   getCampaignHistoricBreakdown,
   getCampaignOrders,
+  getCampaignOrdersSummary,
   getCampaignCatalogueProducts,
   type HistoricBreakdownRow,
 } from '@/lib/supabase'
@@ -16,7 +17,7 @@ import CampaignDetailTabs from '@/components/CampaignDetailTabs'
 import CampaignBackers from '@/components/CampaignBackers'
 import CampaignOrders from '@/components/CampaignOrders'
 import ProductMultiSelect from '@/components/ProductMultiSelect'
-import DateRangeFilter from '@/components/DateRangeFilter'
+import OrdersDateRangeFilter from '@/components/OrdersDateRangeFilter'
 import CustomerSearch from '@/components/CustomerSearch'
 import { SkeletonRows } from '@/components/Skeleton'
 
@@ -85,14 +86,24 @@ async function OrdersSlot({
   toDate: string | null
   showRevenue: boolean
 }) {
-  const { orders, total } = await getCampaignOrders(
-    campaignId,
-    productIds.length > 0 ? productIds : null,
-    toIso(fromDate),
-    toIso(toDate),
-    initialPage,
-    100,
-  )
+  // KPI header + page 1 fetched in parallel — both hit the same
+  // snapshot table, indexed for both reads.
+  const [{ orders, total }, summary] = await Promise.all([
+    getCampaignOrders(
+      campaignId,
+      productIds.length > 0 ? productIds : null,
+      toIso(fromDate),
+      toIso(toDate),
+      initialPage,
+      100,
+    ),
+    getCampaignOrdersSummary(
+      campaignId,
+      productIds.length > 0 ? productIds : null,
+      toIso(fromDate),
+      toIso(toDate),
+    ),
+  ])
   return (
     <CampaignOrders
       campaignId={campaignId}
@@ -102,6 +113,12 @@ async function OrdersSlot({
       initialProductIds={productIds}
       initialFrom={fromDate}
       initialTo={toDate}
+      summary={{
+        total_orders: Number(summary.total_orders),
+        total_revenue: summary.total_revenue,
+        unique_backers: Number(summary.unique_backers),
+        total_units: Number(summary.total_units),
+      }}
       showRevenue={showRevenue}
     />
   )
@@ -246,7 +263,7 @@ export default async function CampaignDetailPage({
         ordersToolbar={
           <>
             <ProductMultiSelect products={catalogueProducts} selected={productIds} />
-            <DateRangeFilter value={{ from: fromDate, to: toDate }} />
+            <OrdersDateRangeFilter value={{ from: fromDate, to: toDate }} />
           </>
         }
         ordersSlot={

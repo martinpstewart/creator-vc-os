@@ -273,6 +273,35 @@ export type CampaignOrderRow = {
   product_ids: number[]
   total_count: number
 }
+// Aggregated KPIs for the Orders tab header — same filter semantics as
+// getCampaignOrders so the numbers always match the table below.
+// total_revenue + total_units are CAMPAIGN-ATTRIBUTED line aggregates
+// (not whole-order sums), matching campaigns_list_snapshot.
+export type CampaignOrdersSummary = {
+  total_orders: number
+  total_revenue: number | string
+  unique_backers: number
+  total_units: number
+}
+export async function getCampaignOrdersSummary(
+  campaignId: number,
+  productIds: number[] | null,
+  startDate: string | null,
+  endDate: string | null,
+) {
+  return withRetry(async () => {
+    const { data, error } = await supabase.rpc('get_campaign_orders_summary', {
+      p_campaign_id: campaignId,
+      p_product_ids: productIds && productIds.length > 0 ? productIds : null,
+      p_start_date: startDate,
+      p_end_date: endDate,
+    })
+    if (error) throw error
+    const rows = (data ?? []) as CampaignOrdersSummary[]
+    return rows[0] ?? { total_orders: 0, total_revenue: 0, unique_backers: 0, total_units: 0 }
+  }, 'getCampaignOrdersSummary')
+}
+
 export async function getCampaignOrders(
   campaignId: number,
   productIds: number[] | null,

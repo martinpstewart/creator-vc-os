@@ -71,6 +71,13 @@ function toIso(d: string | null): string | null {
   return new Date(`${d}T00:00:00Z`).toISOString()
 }
 
+type Summary = {
+  total_orders: number
+  total_revenue: number | string
+  unique_backers: number
+  total_units: number
+}
+
 export default function CampaignOrders({
   campaignId,
   initialOrders,
@@ -79,6 +86,7 @@ export default function CampaignOrders({
   initialProductIds,
   initialFrom,
   initialTo,
+  summary,
   showRevenue,
 }: {
   campaignId: number
@@ -88,6 +96,7 @@ export default function CampaignOrders({
   initialProductIds: number[]
   initialFrom: string | null
   initialTo: string | null
+  summary: Summary
   showRevenue: boolean
 }) {
   const router = useRouter()
@@ -155,6 +164,17 @@ export default function CampaignOrders({
   const hasFilter = initialProductIds.length > 0 || !!initialFrom || !!initialTo
 
   return (
+    <>
+      {/* KPI header — counts the filtered set, not the campaign overall.
+          Revenue + units are CAMPAIGN-ATTRIBUTED (line aggregates), so
+          cross-sell orders don't double-count. */}
+      <div className={`grid grid-cols-2 gap-3 md:gap-4 mb-4 ${showSpend ? 'md:grid-cols-4' : 'md:grid-cols-3'}`}>
+        <KpiTile label="Orders" value={fmt(summary.total_orders)} />
+        {showSpend && <KpiTile label="Revenue" value={fmtUsd(summary.total_revenue)} />}
+        <KpiTile label="Unique Backers" value={fmt(summary.unique_backers)} />
+        <KpiTile label="Units" value={fmt(summary.total_units)} />
+      </div>
+
     <div className="bg-zinc-900 border border-zinc-800 rounded-xl">
       <div className="px-6 py-4 border-b border-zinc-800 flex items-center justify-between gap-3 flex-wrap">
         <h2 className="text-sm font-semibold text-white">
@@ -244,6 +264,16 @@ export default function CampaignOrders({
           {hasFilter ? 'No orders match the current filters.' : 'No orders for this campaign.'}
         </p>
       )}
+    </div>
+    </>
+  )
+}
+
+function KpiTile({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-4 md:p-5">
+      <p className="text-[11px] md:text-xs text-zinc-500 uppercase tracking-wide font-medium">{label}</p>
+      <p className="text-xl md:text-2xl font-semibold text-white mt-2 tabular-nums">{value}</p>
     </div>
   )
 }
