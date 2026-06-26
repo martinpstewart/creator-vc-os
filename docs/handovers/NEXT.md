@@ -5,7 +5,30 @@
 
 ---
 
-## BLOCKED — Shopify backfill (waiting on Admin API access)
+## Shopify webhook (resolved 26 June, pm)
+
+**`shopify-webhook` v40 is live, ingesting cleanly.** Two issues fixed
+in sequence:
+1. **Auth was rejecting native deliveries.** v37/v38 added HMAC + token
+   dual-auth but `SHOPIFY_WEBHOOK_SECRET` was never actually set on the
+   function (debug capture confirmed `secret_length: 0`). Per Martin's
+   call to unblock Aaron, v39 stripped the gate and now requires only
+   an `X-Shopify-Topic` header — every legitimate Shopify delivery sets
+   it, random bots get a quiet 200 ignored.
+2. **`raw_orders` upsert was hitting 42P10.** The unique index is
+   `(source_platform, shopify_order_id)` but the upsert specified
+   `onConflict: "shopify_order_id"` alone, AND `source_platform` was
+   left NULL on the row. v40 sets `source_platform: "shopify"` and
+   changes onConflict to `"source_platform,shopify_order_id"`. End-to-
+   end smoke test: `raw_orders → campaign_orders → customer +
+   junctions + aggregates` all written.
+
+**Security trade-off accepted, TODO to re-tighten:** when there's
+bandwidth, restore HMAC by (1) confirming `SHOPIFY_WEBHOOK_SECRET` is
+set under **Edge Functions → Secrets** (NOT Project Settings / Vault),
+(2) restoring the dual-auth gate from v37's commit.
+
+## BLOCKED — Shopify backfill (still waiting on Admin API access)
 
 The native `orders/create` webhook had been 401'ing at the platform JWT gate since
 **2026-05-12 11:57 UTC** — see `2026-06-26-shopify-webhook-fix-and-backfill.md`.
