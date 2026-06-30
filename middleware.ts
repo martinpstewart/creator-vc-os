@@ -24,7 +24,19 @@ export async function middleware(request: NextRequest) {
     }
   )
 
+  // Routes reachable without a session:
+  //   /login              — sign in
+  //   /forgot-password    — request a reset email
+  //   /reset-password     — land here after clicking the email link;
+  //                         Supabase establishes a recovery session
+  //                         client-side from the URL hash, so this
+  //                         route must NOT bounce unauthenticated
+  //                         users away or the recovery flow can't
+  //                         complete.
+  const PUBLIC_AUTH_PATHS = new Set(['/login', '/forgot-password', '/reset-password'])
+  const isPublicAuthPage = PUBLIC_AUTH_PATHS.has(request.nextUrl.pathname)
   const isLoginPage = request.nextUrl.pathname === '/login'
+  const isForgotPage = request.nextUrl.pathname === '/forgot-password'
 
   let user: { id: string } | null = null
   try {
@@ -35,21 +47,24 @@ export async function middleware(request: NextRequest) {
     user = result.data.user
   } catch (e) {
     console.error('[middleware] auth check failed', e)
-    // On auth failure, treat as unauthenticated but don't bounce away from /login
-    // (avoids redirect loops if Supabase is down).
-    if (isLoginPage) return supabaseResponse
+    // On auth failure, treat as unauthenticated but don't bounce away
+    // from public auth routes (avoids redirect loops if Supabase is down).
+    if (isPublicAuthPage) return supabaseResponse
     const url = request.nextUrl.clone()
     url.pathname = '/login'
     return NextResponse.redirect(url)
   }
 
-  if (!user && !isLoginPage) {
+  if (!user && !isPublicAuthPage) {
     const url = request.nextUrl.clone()
     url.pathname = '/login'
     return NextResponse.redirect(url)
   }
 
-  if (user && isLoginPage) {
+  // A signed-in user landing on /login or /forgot-password should be
+  // sent home. /reset-password is special: a recovery session counts
+  // as signed in, but the user is mid-flow and must be allowed to finish.
+  if (user && (isLoginPage || isForgotPage)) {
     const url = request.nextUrl.clone()
     url.pathname = '/'
     return NextResponse.redirect(url)
@@ -62,7 +77,7 @@ export async function middleware(request: NextRequest) {
   // Cost: one extra PostgREST hop per protected navigation. Acceptable
   // for an internal 4-user CRM; revisit with a signed-role cookie if it
   // ever shows up on traces.
-  if (user && !isLoginPage) {
+  if (user && !isPublicAuthPage) {
     const screen = screenForPath(request.nextUrl.pathname)
     if (screen) {
       let role: Role = 'support'

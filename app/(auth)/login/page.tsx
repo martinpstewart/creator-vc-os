@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
+import Link from 'next/link'
 import { createClient } from '@/lib/supabase-browser'
 import Logo from '@/components/Logo'
 
@@ -52,7 +53,15 @@ export default function LoginPage() {
           </div>
 
           <div>
-            <label className="block text-xs font-medium text-zinc-400 mb-1.5">Password</label>
+            <div className="flex items-baseline justify-between mb-1.5">
+              <label className="block text-xs font-medium text-zinc-400">Password</label>
+              <Link
+                href="/forgot-password"
+                className="text-xs text-zinc-500 hover:text-zinc-300 transition-colors"
+              >
+                Forgot your password?
+              </Link>
+            </div>
             <input
               type="password"
               value={password}
