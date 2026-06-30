@@ -6,11 +6,15 @@ import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 // Stores are a fixed enum so the component owns the option list rather
 // than receiving it as a prop. Order matches their relative volume
 // (Shopify is the busy one; Wix is tiny).
+//
+// ISOD is intentionally absent — it's a documentary, not a store. Its
+// orders were placed on the pre-launch Shopify checkout, so
+// get_customers_list folds 'isod'-tagged customers into the
+// Shopify (legacy) filter.
 const STORES = [
   { value: 'shopify',        label: 'Shopify' },
   { value: 'shopify_legacy', label: 'Shopify (legacy)' },
   { value: 'gumroad',        label: 'Gumroad' },
-  { value: 'isod',           label: 'ISOD' },
   { value: 'indiegogo',      label: 'Indiegogo' },
   { value: 'kickstarter',    label: 'Kickstarter' },
   { value: 'wix',            label: 'Wix' },
