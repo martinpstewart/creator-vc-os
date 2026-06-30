@@ -38,7 +38,7 @@ type OrderLine = {
 }
 
 const DELIVERY_LABEL: Record<string, string> = {
-  pending_shipping: 'Pending Shipping',
+  pending_shipping: 'Pending Shipping Payment',
   shipping_paid:    'Shipping Paid',
   dispatched:       'Dispatched',
 }

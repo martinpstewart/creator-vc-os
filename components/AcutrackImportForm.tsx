@@ -26,10 +26,13 @@ import { formatErrorMessage } from '@/lib/format-error'
 
 // One distinct order, ready to send to Supabase. PONumber# values can
 // arrive with trailing tabs/spaces; we trim on parse. Date is sent
-// verbatim — the RPC parses it as MM/DD/YYYY.
+// verbatim — the RPC parses it as MM/DD/YYYY. order_status drives the
+// per-order shipping badge on customer detail (new = shipping paid,
+// shipped = dispatched). Empty when the export omits the column.
 type ParsedRow = {
   ponumber: string
   date_created: string
+  order_status: string
 }
 
 // Summary from glide-retrigger-missing surfaced in the success message.
@@ -97,17 +100,19 @@ export default function AcutrackImportForm() {
       skipEmptyLines: true,
       complete: (result) => {
         try {
-          const seen = new Map<string, string>()
+          const seen = new Map<string, { date: string; status: string }>()
           for (const row of result.data) {
             const pono = (row['PONumber#'] ?? '').trim()
             if (!pono) continue
             if (seen.has(pono)) continue
             const date = (row['Date Created'] ?? '').trim()
-            seen.set(pono, date)
+            const status = (row['OrderStatus'] ?? '').trim()
+            seen.set(pono, { date, status })
           }
-          const rows: ParsedRow[] = Array.from(seen.entries()).map(([ponumber, date_created]) => ({
+          const rows: ParsedRow[] = Array.from(seen.entries()).map(([ponumber, { date, status }]) => ({
             ponumber,
-            date_created,
+            date_created: date,
+            order_status: status,
           }))
           if (rows.length === 0) {
             setStage({
