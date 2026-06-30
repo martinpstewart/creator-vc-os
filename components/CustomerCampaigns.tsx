@@ -91,20 +91,33 @@ function groupByOrder(lines: OrderLine[]): { ref: string; lines: OrderLine[] }[]
   return Array.from(groups, ([ref, lines]) => ({ ref, lines }))
 }
 
-function OrderHeader({ ref, line }: { ref: string; line: OrderLine }) {
-  const deliveryLabel = line.delivery_status ? DELIVERY_LABEL[line.delivery_status] : null
-  const deliveryClass = line.delivery_status ? DELIVERY_CLASS[line.delivery_status] : ''
+function HeaderCell({ label, children }: { label: string; children: React.ReactNode }) {
   return (
-    <div className="flex flex-wrap items-center gap-2 md:gap-3 px-6 py-2.5 bg-zinc-900/60 border-b border-zinc-800/60">
-      <span className="font-mono text-xs text-zinc-300">{ref}</span>
-      <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium bg-zinc-800 text-zinc-300 uppercase tracking-wide">
-        {paymentLabel(line.financial_status)}
-      </span>
-      {deliveryLabel && (
+    <div className="flex flex-col gap-1 min-w-0">
+      <span className="text-[10px] font-medium text-zinc-500 uppercase tracking-wide">{label}</span>
+      <div className="flex items-center">{children}</div>
+    </div>
+  )
+}
+
+function OrderHeader({ ref, line }: { ref: string; line: OrderLine }) {
+  const deliveryLabel = line.delivery_status ? DELIVERY_LABEL[line.delivery_status] : '—'
+  const deliveryClass = line.delivery_status ? DELIVERY_CLASS[line.delivery_status] : 'bg-zinc-800 text-zinc-400 border-zinc-700'
+  return (
+    <div className="grid grid-cols-[1fr_auto_auto] gap-4 md:gap-6 px-6 py-3 bg-zinc-900/60 border-b border-zinc-800/60">
+      <HeaderCell label="Order Number">
+        <span className="font-mono text-xs text-zinc-300 truncate">{ref}</span>
+      </HeaderCell>
+      <HeaderCell label="Payment Status">
+        <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium bg-zinc-800 text-zinc-300 uppercase tracking-wide">
+          {paymentLabel(line.financial_status)}
+        </span>
+      </HeaderCell>
+      <HeaderCell label="Shipping Status">
         <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium border uppercase tracking-wide ${deliveryClass}`}>
           {deliveryLabel}
         </span>
-      )}
+      </HeaderCell>
     </div>
   )
 }
