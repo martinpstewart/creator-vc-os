@@ -33,6 +33,35 @@ type OrderLine = {
   order_id: string
   order_number: string | null
   purchase_type: string
+  financial_status: string | null
+  delivery_status: 'pending_shipping' | 'shipping_paid' | 'dispatched' | null
+}
+
+const DELIVERY_LABEL: Record<string, string> = {
+  pending_shipping: 'Pending Shipping',
+  shipping_paid:    'Shipping Paid',
+  dispatched:       'Dispatched',
+}
+
+// Tailwind classes for each delivery state — kept inline rather than
+// dynamic so the JIT picks them up.
+const DELIVERY_CLASS: Record<string, string> = {
+  pending_shipping: 'bg-amber-500/15 text-amber-300 border-amber-500/30',
+  shipping_paid:    'bg-sky-500/15 text-sky-300 border-sky-500/30',
+  dispatched:       'bg-emerald-500/15 text-emerald-300 border-emerald-500/30',
+}
+
+const PAYMENT_LABEL: Record<string, string> = {
+  paid:               'Paid',
+  refunded:           'Refunded',
+  partially_refunded: 'Partial refund',
+  pending:            'Pending',
+  voided:             'Voided',
+  authorized:         'Authorized',
+}
+function paymentLabel(status: string | null): string {
+  if (!status) return '—'
+  return PAYMENT_LABEL[status] ?? status.charAt(0).toUpperCase() + status.slice(1).replace(/_/g, ' ')
 }
 
 function fmt(n: number | string | null, currency = false) {
@@ -49,20 +78,44 @@ function displayOrderRef(line: OrderLine): string {
   return line.order_number?.trim() || line.order_id
 }
 
-function OrdersTable({ lines }: { lines: OrderLine[] }) {
-  if (lines.length === 0) {
-    return <p className="px-8 py-4 text-xs text-zinc-500">No order details found for this campaign.</p>
+// Group lines by Order # (falling back to order_id), preserving the
+// RPC's incoming order — it ORDERs by order_number nulls last.
+function groupByOrder(lines: OrderLine[]): { ref: string; lines: OrderLine[] }[] {
+  const groups = new Map<string, OrderLine[]>()
+  for (const line of lines) {
+    const ref = displayOrderRef(line)
+    const existing = groups.get(ref)
+    if (existing) existing.push(line)
+    else groups.set(ref, [line])
   }
+  return Array.from(groups, ([ref, lines]) => ({ ref, lines }))
+}
 
-  const isIsod = lines.every(l => l.purchase_type === 'isod')
+function OrderHeader({ ref, line }: { ref: string; line: OrderLine }) {
+  const deliveryLabel = line.delivery_status ? DELIVERY_LABEL[line.delivery_status] : null
+  const deliveryClass = line.delivery_status ? DELIVERY_CLASS[line.delivery_status] : ''
+  return (
+    <div className="flex flex-wrap items-center gap-2 md:gap-3 px-6 py-2.5 bg-zinc-900/60 border-b border-zinc-800/60">
+      <span className="font-mono text-xs text-zinc-300">{ref}</span>
+      <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium bg-zinc-800 text-zinc-300 uppercase tracking-wide">
+        {paymentLabel(line.financial_status)}
+      </span>
+      {deliveryLabel && (
+        <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium border uppercase tracking-wide ${deliveryClass}`}>
+          {deliveryLabel}
+        </span>
+      )}
+    </div>
+  )
+}
 
+function OrderLinesTable({ lines, isIsod }: { lines: OrderLine[]; isIsod: boolean }) {
   if (isIsod) {
     return (
       <table className="w-full text-xs">
         <thead>
           <tr className="border-b border-zinc-800/50">
             <th className="text-left px-8 py-2 text-zinc-500 font-medium">SKU</th>
-            <th className="text-left px-4 py-2 text-zinc-500 font-medium">Order #</th>
             <th className="text-right px-6 py-2 text-zinc-500 font-medium">Price</th>
           </tr>
         </thead>
@@ -70,7 +123,6 @@ function OrdersTable({ lines }: { lines: OrderLine[] }) {
           {lines.map((line, i) => (
             <tr key={i} className="border-b border-zinc-800/30 last:border-0">
               <td className="px-8 py-2.5 font-mono text-zinc-300">{line.product_name}</td>
-              <td className="px-4 py-2.5 font-mono text-zinc-500">{displayOrderRef(line)}</td>
               <td className="px-6 py-2.5 text-right text-zinc-300">
                 {line.price_paid !== null ? fmt(line.price_paid, true) : '—'}
               </td>
@@ -80,14 +132,12 @@ function OrdersTable({ lines }: { lines: OrderLine[] }) {
       </table>
     )
   }
-
   return (
     <table className="w-full text-xs">
       <thead>
         <tr className="border-b border-zinc-800/50">
           <th className="text-left px-8 py-2 text-zinc-500 font-medium">Product</th>
           <th className="text-left px-4 py-2 text-zinc-500 font-medium">Variant</th>
-          <th className="text-left px-4 py-2 text-zinc-500 font-medium">Order #</th>
           <th className="text-right px-4 py-2 text-zinc-500 font-medium">Qty</th>
           <th className="text-right px-6 py-2 text-zinc-500 font-medium">Price</th>
         </tr>
@@ -97,7 +147,6 @@ function OrdersTable({ lines }: { lines: OrderLine[] }) {
           <tr key={i} className="border-b border-zinc-800/30 last:border-0">
             <td className="px-8 py-2.5 text-zinc-300">{line.product_name}</td>
             <td className="px-4 py-2.5 text-zinc-500">{line.variant_name || '—'}</td>
-            <td className="px-4 py-2.5 font-mono text-zinc-500">{displayOrderRef(line)}</td>
             <td className="px-4 py-2.5 text-right text-zinc-400">{line.quantity}</td>
             <td className="px-6 py-2.5 text-right text-zinc-300">
               {line.price_paid !== null ? fmt(line.price_paid, true) : '—'}
@@ -106,6 +155,26 @@ function OrdersTable({ lines }: { lines: OrderLine[] }) {
         ))}
       </tbody>
     </table>
+  )
+}
+
+function OrdersTable({ lines }: { lines: OrderLine[] }) {
+  if (lines.length === 0) {
+    return <p className="px-8 py-4 text-xs text-zinc-500">No order details found for this campaign.</p>
+  }
+  const orders = groupByOrder(lines)
+  return (
+    <div>
+      {orders.map(({ ref, lines: orderLines }) => {
+        const isIsod = orderLines.every(l => l.purchase_type === 'isod')
+        return (
+          <div key={ref} className="border-b border-zinc-800/40 last:border-0">
+            <OrderHeader ref={ref} line={orderLines[0]} />
+            <OrderLinesTable lines={orderLines} isIsod={isIsod} />
+          </div>
+        )
+      })}
+    </div>
   )
 }
 
