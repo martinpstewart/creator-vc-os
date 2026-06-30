@@ -10,7 +10,9 @@ import StoreFilter, { type StoreValue } from '@/components/StoreFilter'
 // from a 'use client' module gives the server a proxy, not an array,
 // so .includes(...) blows up. Types are erased at compile time so
 // the type-only import above is fine.
-const STORE_VALUES_RUNTIME = ['shopify', 'shopify_legacy', 'gumroad', 'isod', 'indiegogo', 'kickstarter', 'wix'] as const
+// ISOD intentionally absent — its orders fold into Shopify (legacy).
+// See the comment in components/StoreFilter.tsx.
+const STORE_VALUES_RUNTIME = ['shopify', 'shopify_legacy', 'gumroad', 'indiegogo', 'kickstarter', 'wix'] as const
 import ClickableRow from '@/components/ClickableRow'
 
 // Bump Vercel's default 10s function timeout. get_customers_list is
