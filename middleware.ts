@@ -74,38 +74,54 @@ export async function middleware(request: NextRequest) {
   // (RLS scopes this to their own row), maps the URL to a Screen, and
   // 302s them to their FIRST_ALLOWED screen if they can't see this one.
   //
-  // Cost: one extra PostgREST hop per protected navigation. Acceptable
-  // for an internal 4-user CRM; revisit with a signed-role cookie if it
-  // ever shows up on traces.
+  // Same query also reads password_set_at so we can force first-time
+  // invitees (created via magic-link, no password yet) to /profile
+  // before they can browse anything else.
+  //
+  // Cost: one PostgREST hop per protected navigation. Acceptable for an
+  // internal CRM; revisit with a signed cookie if it shows up on traces.
   if (user && !isPublicAuthPage) {
-    const screen = screenForPath(request.nextUrl.pathname)
-    if (screen) {
-      let role: Role = 'support'
-      try {
-        const lookup = supabase
-          .from('app_user_roles')
-          .select('role')
-          .eq('user_id', user.id)
-          .maybeSingle()
-        const timeout = new Promise<never>((_, reject) =>
-          setTimeout(() => reject(new Error('role lookup timeout')), 2000)
-        )
-        const result = (await Promise.race([lookup, timeout])) as {
-          data: { role: string } | null
-        }
-        role = normaliseRole(result.data?.role)
-      } catch (e) {
-        // Fall back to 'support' (already set) — the least-privileged tier
-        // is the safest assumption when the lookup is flaky.
-        console.error('[middleware] role lookup failed', e)
+    let role: Role = 'support'
+    let passwordSet = true
+    try {
+      const lookup = supabase
+        .from('app_user_roles')
+        .select('role, password_set_at')
+        .eq('user_id', user.id)
+        .maybeSingle()
+      const timeout = new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error('role lookup timeout')), 2000)
+      )
+      const result = (await Promise.race([lookup, timeout])) as {
+        data: { role: string; password_set_at: string | null } | null
       }
+      role = normaliseRole(result.data?.role)
+      passwordSet = Boolean(result.data?.password_set_at)
+    } catch (e) {
+      // Fall back to 'support' + passwordSet=true. The least-privileged
+      // role is the safest assumption when the lookup is flaky, and
+      // not bouncing them to /profile prevents a redirect loop if the
+      // lookup is broken for everyone.
+      console.error('[middleware] role/password lookup failed', e)
+    }
 
-      if (!ACCESS[role].includes(screen)) {
-        const url = request.nextUrl.clone()
-        url.pathname = FIRST_ALLOWED[role]
-        url.search = ''
-        return NextResponse.redirect(url)
-      }
+    // First-login password gate: if the user hasn't set a password yet,
+    // /profile is the only screen they can reach. Their password update
+    // there calls user_mark_password_set, after which this branch falls
+    // through to the normal role check on the next navigation.
+    if (!passwordSet && request.nextUrl.pathname !== '/profile') {
+      const url = request.nextUrl.clone()
+      url.pathname = '/profile'
+      url.search = ''
+      return NextResponse.redirect(url)
+    }
+
+    const screen = screenForPath(request.nextUrl.pathname)
+    if (screen && !ACCESS[role].includes(screen)) {
+      const url = request.nextUrl.clone()
+      url.pathname = FIRST_ALLOWED[role]
+      url.search = ''
+      return NextResponse.redirect(url)
     }
   }
 

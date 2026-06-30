@@ -61,6 +61,12 @@ export default function ResetPasswordPage() {
       setLoading(false)
       return
     }
+    // If this user was created via magic-link invite and never set a
+    // password, the recovery flow doubles as the first-time setup —
+    // mark the gate as cleared so the middleware stops sending them
+    // back to /profile.
+    const { error: markErr } = await supabase.rpc('user_mark_password_set')
+    if (markErr) console.warn('[ResetPassword] mark password set failed', markErr.message)
     router.push('/')
     router.refresh()
   }

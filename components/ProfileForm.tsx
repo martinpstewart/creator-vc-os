@@ -23,13 +23,37 @@ export default function ProfileForm({
   email,
   initialDisplayName,
   role,
+  needsPassword = false,
 }: {
   email: string
   initialDisplayName: string | null
   role: string | null
+  needsPassword?: boolean
 }) {
   const router = useRouter()
   const supabase = createClient()
+
+  // First-login flow: password section first, name section hidden until
+  // a password is set. Keeps the screen focused on the one thing the
+  // user has to do.
+  if (needsPassword) {
+    return (
+      <PasswordSection
+        firstTime
+        onSave={async (next) => {
+          const { error } = await supabase.auth.updateUser({ password: next })
+          if (error) throw error
+          // Flip the gate so the middleware stops redirecting here.
+          // Errors don't unwind the password update; we surface them
+          // but still let the user proceed.
+          const { error: markErr } = await supabase.rpc('user_mark_password_set')
+          if (markErr) console.warn('[ProfileForm] mark password set failed', markErr.message)
+          router.refresh()
+          router.push('/')
+        }}
+      />
+    )
+  }
 
   return (
     <div className="space-y-6">
@@ -64,6 +88,10 @@ export default function ProfileForm({
         onSave={async (next) => {
           const { error } = await supabase.auth.updateUser({ password: next })
           if (error) throw error
+          // Belt-and-braces: in the rare case an existing user had a
+          // NULL password_set_at and updates their password through
+          // this surface, mark it set.
+          await supabase.rpc('user_mark_password_set')
         }}
       />
     </div>
@@ -135,7 +163,13 @@ function NameSection({
   )
 }
 
-function PasswordSection({ onSave }: { onSave: (next: string) => Promise<void> }) {
+function PasswordSection({
+  onSave,
+  firstTime = false,
+}: {
+  onSave: (next: string) => Promise<void>
+  firstTime?: boolean
+}) {
   const [next, setNext] = useState('')
   const [confirm, setConfirm] = useState('')
   const [saving, setSaving] = useState(false)
@@ -167,9 +201,11 @@ function PasswordSection({ onSave }: { onSave: (next: string) => Promise<void> }
 
   return (
     <form onSubmit={submit} className="bg-zinc-900 border border-zinc-800 rounded-xl p-5 md:p-6">
-      <h2 className="text-sm font-semibold text-white">Reset password</h2>
+      <h2 className="text-sm font-semibold text-white">{firstTime ? 'Choose a password' : 'Reset password'}</h2>
       <p className="text-xs text-zinc-500 mt-1">
-        Pick a new password (at least 8 characters). You&rsquo;ll stay signed in here, but other devices will be signed out.
+        {firstTime
+          ? 'Pick a password (at least 8 characters). The rest of the app unlocks as soon as you save.'
+          : 'Pick a new password (at least 8 characters). You’ll stay signed in here, but other devices will be signed out.'}
       </p>
       <div className="mt-4 space-y-3">
         <div>
@@ -212,7 +248,7 @@ function PasswordSection({ onSave }: { onSave: (next: string) => Promise<void> }
           disabled={!canSubmit}
           className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-[#3B9EE8] hover:bg-[#3691d4] disabled:opacity-40 disabled:cursor-not-allowed text-white text-sm font-medium transition-colors"
         >
-          {saving ? 'Updating…' : 'Update password'}
+          {saving ? (firstTime ? 'Saving…' : 'Updating…') : firstTime ? 'Save password and continue' : 'Update password'}
         </button>
         {flash && (
           <span className="inline-flex items-center gap-1.5 text-xs text-emerald-400">
