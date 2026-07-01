@@ -221,7 +221,8 @@ All listed RPCs live in `public.*` and are `SECURITY DEFINER`. They're how the a
 
 ### Dashboard / home
 
-- `home_dashboard()` — admin-gated. Returns the full dashboard payload (channel splits, totals, 30-day timelines). Source: `dashboard_snapshot`. **You can read `aa_02_crm.dashboard_snapshot.payload` directly** if you want to bypass the admin gate (it's the same JSONB).
+- `home_dashboard()` — admin-gated wrapper. Returns the full dashboard payload (channel splits, totals, 30-day timelines).
+- `home_dashboard_impl()` — the inner read. Intentionally not gated, because the app's Next.js SSR path calls it via an anon server client (no session cookie forwarded → `auth.uid()` is NULL → any `is_admin()` guard would 500 the page). Route-level admin gating happens in middleware, not here. **Do not add a role check to this function.** The dashboard-payload JSONB is also directly readable from `aa_02_crm.dashboard_snapshot.payload` (id=1) if you want to bypass the RPC entirely.
 
 ### Customers
 
