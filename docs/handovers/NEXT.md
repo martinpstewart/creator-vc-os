@@ -1,7 +1,50 @@
 # NEXT — Creator VC OS
 
 **Supabase:** `xwokhafcllstcnlcberv` (eu-west-2) · connector **"Creator VC OS"** only
-**Last updated:** 26 June 2026
+**Last updated:** 1 July 2026
+
+---
+
+## Gumroad attribution overhaul (2026-07-01, C Chat)
+
+See `2026-07-01-gumroad-attribution-overhaul.md`. Robin flagged that
+Aliens Expanded showed **0 Gumroad orders** — not missing data, systemic
+mis-attribution across the whole Gumroad catalogue.
+
+**Now live:**
+- `gumroad-webhook` **v10** — null fallback (was hard-coded `= 1`); no
+  longer writes the retired `campaign_orders*` tables.
+- `shopify-webhook` **v41** — no longer writes the retired
+  `campaign_orders*` tables. Campaign resolution unchanged. Auth still
+  open — HMAC re-tighten is still an open item.
+- **Campaign 17 `CreatorVC Digital Package`** exists, with
+  `campaigns.campaign_type` flag (`documentary` default, 17 = `package`).
+- Live Gumroad now resolves 617/617 orders across 11 campaigns — see the
+  distribution table in the addendum.
+- Monitor view `aa_01_campaigns.v_gumroad_unmapped` — surfaces any new
+  Gumroad product without a resolvable variant. Currently 0.
+- `raw_orders.campaign_id` is now **nullable** so a null-fallback
+  webhook doesn't reject unmapped orders.
+- Retired shells (`campaign_orders`, `campaign_order_lines`,
+  `customer_campaign_orders`) are back at 0 rows;
+  `_campaign_orders_archive` preserved.
+
+**Open items:**
+- **DROP the empty shells** next clean cycle (need a few days of
+  confirmed zero writes first).
+- **Shopify HMAC** re-tighten (still per the original TODO).
+- **Shopify `campaign_id = 1` default parity** — left as-is (Shopify
+  resolves reliably via `shop_domain` then order-number suffix). Tighten
+  to null + monitor if desired.
+- **Live Star Wars fan-out** if the bundle sells again — the $0
+  component synthesis is currently historic-only.
+
+**Key learning to preserve:** live Gumroad attribution is **not** driven
+by `raw_orders.campaign_id` or `gumroad_products_map` — it goes
+SKU → `variants.legacy_code` (upper-match) → `variant.product.campaign_id`,
+via `v_raw_order_line_attribution` → `mv_raw_order_line_attribution`
+(15-min cron). To fix a live line you must land the SKU on a variant
+whose **product** sits on the correct campaign.
 
 ---
 

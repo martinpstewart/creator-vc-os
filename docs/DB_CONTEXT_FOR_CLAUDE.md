@@ -101,17 +101,17 @@ Every line item is attributed to a `campaign_id` via the order number suffix (e.
 
 | Table | What it is | Rows (approx) |
 |---|---|---|
-| `campaigns` | Master campaign list. `legacy_code` is the regex target for routing. | ~30 |
-| `raw_orders` | Every live webhook delivery, JSONB payload + extracted columns. 123 MB. | 19,202 |
-| `campaign_orders` / `campaign_order_lines` | One row per attributed order / line item. | 1,234 / 1,586 |
+| `campaigns` | Master campaign list. `legacy_code` is the regex target for routing. `campaign_type` distinguishes `documentary` (default) from `package` (bundle-only campaigns like id 17 CreatorVC Digital Package). | ~31 |
+| `raw_orders` | Every live webhook delivery, JSONB payload + extracted columns. **`campaign_id` is nullable** (as of 2026-07-01) so unmapped orders are captured, not rejected. 123 MB. | 19,000+ |
+| `campaign_orders` / `campaign_order_lines` | **Retired 2026-06-18.** Empty shells kept for now. Both webhooks stopped writing here at gumroad-webhook v10 / shopify-webhook v41 (2026-07-01). Do not query as if it holds data. | 0 / 0 |
 | `historic_orders` / `historic_order_lines` | All pre-launch CSV imports (Shopify legacy, Wix, Gumroad, Indiegogo, Kickstarter, ISOD). 82 + 47 MB. | 114,102 / 144,555 |
 | `isod_orders` / `isod_order_lines` | Original ISOD docu campaign, brought across via `isod95_fdw`. | 6,206 / 8,117 |
 | `order_entitlements` | Cross-sell entitlement records (a backer of campaign X gets a token for campaign Y). | 920 |
-| `products` / `variants` / `bundles` / `bundle_components` | Catalogue. | 106 / 48 / — |
-| `shopify_products_map` / `shopify_variants_map` / `gumroad_products_map` | Maps platform SKUs → our `products.id`. | 33 / 33 / — |
+| `products` / `variants` / `bundles` / `bundle_components` | Catalogue. Live attribution flows product → campaign, so a **variant's product's campaign_id** is what matters. | ~150 / ~55 |
+| `shopify_products_map` / `shopify_variants_map` / `gumroad_products_map` | Maps platform SKUs → our `variants` / `products`. `variant_legacy_code` on the Gumroad map is **NOT NULL** — always a real variant code. | 33 / 33 / — |
 | `shopify_product_inbox` | Newly-seen Shopify products/variants pending manual mapping. | 26 |
 | `shop_domains` | Maps `*.myshopify.com` → fallback `campaign_id` when the order number doesn't include a legacy code. | — |
-| `payhere_payments` / `payhere_poll_state` | PayHere transactions, polled hourly. | 3,276 / 1 |
+| `payhere_payments` / `payhere_poll_state` | PayHere transactions, polled hourly. | 3,276+ / 1 |
 | `payhere_retrigger_log` / `payhere_dismissed_alerts` | Audit log + dismiss state for the dispatch monitor. | 191 / — |
 | `acutrack_received` | The Acutrack 3PL CSV upload — one row per order they confirmed received. Drives the shipping-status badge. | 14,084 |
 | `backer_fulfillment` | Per-customer fulfilment state for Kickstarter-era backers. | 684 |
@@ -121,7 +121,8 @@ Every line item is attributed to a `campaign_id` via the order number suffix (e.
 | Table | What it is | Rows |
 |---|---|---|
 | `customers` | One row per email. The CRM identity. Includes name + shipping fields. | 79,605 |
-| `customer_raw_orders` / `customer_campaign_orders` / `customer_isod_orders` / `customer_historic_orders` | Pure link tables. Customer × order across each source. | mirror order counts |
+| `customer_raw_orders` / `customer_isod_orders` / `customer_historic_orders` | Pure link tables. Customer × order across each source. | mirror order counts |
+| `customer_campaign_orders` | **Retired 2026-06-18.** Empty shell — junction is no longer maintained by the webhooks. | 0 |
 | `tickets` | Local mirror of Freshdesk tickets, refreshed by `freshdesk-poll` (hourly) and `freshdesk-webhook` (real-time). | — |
 | `snapshot_watermarks` | High-water-mark `last_seen_id` per snapshot — incremental refreshers read here so they don't full-scan. **Do not write.** | 3 |
 | `dashboard_snapshot` (id=1) | The home dashboard payload — one JSONB row built by `build_home_dashboard_payload()`. Read via `home_dashboard()`. | 1 |
@@ -167,8 +168,8 @@ All deployed under `https://xwokhafcllstcnlcberv.functions.supabase.co/<slug>`. 
 
 | Slug | `verify_jwt` | What it does | Why no JWT |
 |---|---|---|---|
-| `shopify-webhook` | false | Receives every Shopify order/create + paid/fulfilled event. Writes `raw_orders` + `campaign_orders` + `campaign_order_lines` + customer junctions. | v40 is **deliberately open** — HMAC verification kept breaking when the Shopify dev couldn't keep the secret in sync. Webhook upserts on `(source_platform, shopify_order_id)` so the blast radius of a bad POST is small. TODO to re-tighten. |
-| `gumroad-webhook` | false | Same shape for Gumroad sales. | Gumroad doesn't sign. |
+| `shopify-webhook` | false | Receives every Shopify order/create + paid/fulfilled event. Writes `raw_orders` + `customer_raw_orders` + customer aggregates. **v41** (2026-07-01) removed writes to the retired `campaign_orders*` tables. | Deliberately open — HMAC verification kept breaking when the Shopify dev couldn't keep the secret in sync. Webhook upserts on `(source_platform, shopify_order_id)` so the blast radius of a bad POST is small. TODO to re-tighten. |
+| `gumroad-webhook` | false | Writes `raw_orders` + `customer_raw_orders` + customer aggregates. **v10** (2026-07-01) fixed the hard-coded `campaign_id = 1` fallback (now null) and removed retired-table writes. Synthesises a Shopify-shaped payload so the same attribution view resolves it. | Gumroad doesn't sign. |
 | `freshdesk-webhook` | false | Real-time ticket updates; mirrors into `aa_02_crm.tickets`. | Freshdesk webhooks don't carry a JWT. |
 
 ### Polls (cron-driven)
@@ -271,10 +272,12 @@ All listed RPCs live in `public.*` and are `SECURITY DEFINER`. They're how the a
 ### Useful views
 
 - `aa_01_campaigns.v_all_orders` — unioned view across all four order tables (raw_orders + historic_orders + isod_orders + order_entitlements). Use this when Robin asks "across everything, …".
-- `aa_01_campaigns.mv_raw_order_line_attribution` — materialised, refreshed every 15 min. Joins live Shopify line items to their campaign + revenue. Cheapest path to live-channel revenue analysis.
+- `aa_01_campaigns.mv_raw_order_line_attribution` — materialised, refreshed every 15 min. Joins live Shopify **AND** live Gumroad line items to their campaign + revenue via the SKU → variants.legacy_code → variant.product.campaign_id path. Cheapest path to live-channel revenue analysis.
+- `aa_01_campaigns.v_gumroad_unmapped` — monitor. Any Gumroad line item whose SKU doesn't resolve to a campaign shows up here. Baseline is 0 — a non-zero row means a new Gumroad product was sold and needs a variant mapping.
 - `aa_02_crm.v_paying_customer_emails` — canonical paying-customer set. Use this for "is X a paying customer".
 - `aa_02_crm.v_campaign_paying_emails` — per-campaign paying-customer emails.
 - `aa_02_crm.customer_summary` — flattened customer view.
+- `aa_03_marketing.mv_contact_campaign_engagement` — materialised (2026-07-01), refreshed every 10 min. Backs every segment count in the Marketing screen. Use this instead of `v_contact_campaign_engagement` for any per-contact-per-campaign lookup.
 
 ---
 
@@ -360,7 +363,9 @@ These are not abstract risks; each one corresponds to a production incident we a
 
 `aa_01_campaigns.raw_orders` is the source of truth for live Shopify + Gumroad. The webhook handler upserts on `(source_platform, shopify_order_id)` — manually inserting a row with a colliding ID will overwrite the real payload. Manually deleting a row drops a paying customer from every snapshot.
 
-`campaign_orders`, `campaign_order_lines`, and the customer junctions are derived from `raw_orders` by the webhook handler. They get rewritten every time a `paid` / `fulfilled` event arrives for the same order. Manual edits will be silently reverted on the next webhook delivery.
+**Live attribution is not driven by `raw_orders.campaign_id` or the platform maps.** It goes: line-item SKU → `aa_01_campaigns.variants.legacy_code` (upper-match) → that variant's product's `campaign_id`. This is baked into `v_raw_order_line_attribution` and refreshed into `mv_raw_order_line_attribution` every 15 min. If Robin needs to fix a mis-attributed live line, don't touch `raw_orders.campaign_id` — the fix is in the variant graph.
+
+The `customer_raw_orders` / `customer_isod_orders` / `customer_historic_orders` junctions are derived from the base tables by the webhook handlers. They get rewritten every time a `paid` / `fulfilled` event arrives for the same order. Manual edits will be silently reverted on the next webhook delivery. `campaign_orders` / `campaign_order_lines` / `customer_campaign_orders` were retired 2026-06-18 — the shells are empty and no longer maintained.
 
 ### 8.2 Never write to snapshot tables
 
