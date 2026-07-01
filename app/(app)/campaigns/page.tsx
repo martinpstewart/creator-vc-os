@@ -53,6 +53,11 @@ export default async function CampaignsPage() {
               {rows.length} campaigns · {fmt(totalBackers)} unique backers
               {showRevenue && <> · {fmt(totalRevenue, true)} total revenue</>}
             </p>
+            {showRevenue && (
+              <p className="text-[11px] text-zinc-600 mt-1">
+                Revenue is the total attributed to each campaign, across every source (live Shopify, live Gumroad, historic imports).
+              </p>
+            )}
             {/* Cross-campaign buyers are counted in each campaign's row
                 below, so per-row backer counts can sum higher than the
                 unique total above. */}
@@ -88,17 +93,9 @@ export default async function CampaignsPage() {
                   <td className="px-6 py-4">
                     <Link
                       href={`/campaigns/${r.campaign_id}`}
-                      className="font-medium text-white hover:text-zinc-300 transition-colors inline-flex items-center gap-2"
+                      className="font-medium text-white hover:text-zinc-300 transition-colors"
                     >
                       {r.campaign_name}
-                      {r.has_historic && (
-                        <span
-                          className="text-[10px] uppercase tracking-wide font-semibold text-zinc-500 bg-zinc-800/80 px-1.5 py-0.5 rounded"
-                          title="Includes historic CSV imports (Gumroad / shopify_legacy / Wix)"
-                        >
-                          + historic
-                        </span>
-                      )}
                     </Link>
                   </td>
                   <td className="px-6 py-4 text-right text-zinc-300">{fmt(r.total_customers)}</td>
