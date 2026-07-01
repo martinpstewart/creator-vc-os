@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import { createClient } from '@/lib/supabase-browser'
+import { formatErrorMessage } from '@/lib/format-error'
 import { Plus, X, Save, Users } from 'lucide-react'
 import {
   COUNTRY_OPTIONS,
@@ -104,7 +105,10 @@ export default function SegmentBuilder({
         setCount(typeof data === 'number' ? data : Number(data ?? 0))
       } catch (e) {
         if (!cancelled) {
-          setCountError(e instanceof Error ? e.message : String(e))
+          // formatErrorMessage handles Supabase's plain-object errors
+          // (`{message, code, hint}`) which otherwise render as
+          // "[object Object]" via String(e).
+          setCountError(formatErrorMessage(e))
           setCount(null)
         }
       } finally {
@@ -593,7 +597,7 @@ function SaveSegmentModal({
       if (error) throw error
       onSaved()
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e))
+      setError(formatErrorMessage(e))
     } finally {
       setSaving(false)
     }
