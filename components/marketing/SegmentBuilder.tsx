@@ -6,6 +6,7 @@ import { Plus, X, Save, Users } from 'lucide-react'
 import {
   COUNTRY_OPTIONS,
   ROLE_LABELS,
+  normaliseSegmentDefinition,
   type CampaignEngagementRole,
   type CampaignLite,
   type FilterType,
@@ -26,10 +27,13 @@ const FILTER_TYPE_OPTIONS: { value: FilterType; label: string }[] = [
   { value: 'is_test', label: 'Test contacts (safe-send)' },
 ]
 
-function defaultFilterFor(type: FilterType, campaigns: CampaignLite[]): SegmentFilter {
+function defaultFilterFor(type: FilterType, _campaigns: CampaignLite[]): SegmentFilter {
   switch (type) {
     case 'campaign_engagement':
-      return { type, campaign_id: campaigns[0]?.id ?? 0, role: 'backer' }
+      // Start with an empty campaign selection — the row shows a
+      // "pick campaigns" hint so nothing counts as "backed" until the
+      // user makes an explicit choice.
+      return { type, campaign_ids: [], role: 'backer' }
     case 'consent':
       return { type, consented: true }
     case 'total_spend_gte':
@@ -71,7 +75,7 @@ export default function SegmentBuilder({
   onCancelEdit: () => void
 }) {
   const [definition, setDefinition] = useState<SegmentDefinition>(
-    initialDefinition ?? { match: 'all', filters: [] },
+    initialDefinition ? normaliseSegmentDefinition(initialDefinition) : { match: 'all', filters: [] },
   )
   const [count, setCount] = useState<number | null>(null)
   const [counting, setCounting] = useState(false)
@@ -80,7 +84,9 @@ export default function SegmentBuilder({
 
   // When the user clicks "Edit" on a saved segment, swap definition in.
   useEffect(() => {
-    setDefinition(initialDefinition ?? { match: 'all', filters: [] })
+    setDefinition(
+      initialDefinition ? normaliseSegmentDefinition(initialDefinition) : { match: 'all', filters: [] },
+    )
   }, [editingSegmentId, initialDefinition])
 
   // Debounced live count via count_segment RPC.
@@ -316,34 +322,8 @@ function FilterInputs({
 }) {
   switch (filter.type) {
     case 'campaign_engagement':
-      return (
-        <div className="flex flex-wrap items-center gap-2 text-xs">
-          <span className="text-zinc-500 shrink-0">Campaign</span>
-          <select
-            value={filter.campaign_id}
-            onChange={(e) => onChange({ ...filter, campaign_id: parseInt(e.target.value, 10) })}
-            className="bg-zinc-900 border border-zinc-800 rounded px-2 py-1.5 text-zinc-100 focus:outline-none focus:border-zinc-600 min-w-[180px]"
-          >
-            {campaigns.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.name}
-              </option>
-            ))}
-          </select>
-          <span className="text-zinc-500">·</span>
-          <select
-            value={filter.role}
-            onChange={(e) => onChange({ ...filter, role: e.target.value as CampaignEngagementRole })}
-            className="bg-zinc-900 border border-zinc-800 rounded px-2 py-1.5 text-zinc-100 focus:outline-none focus:border-zinc-600"
-          >
-            {(Object.keys(ROLE_LABELS) as CampaignEngagementRole[]).map((r) => (
-              <option key={r} value={r}>
-                {ROLE_LABELS[r]}
-              </option>
-            ))}
-          </select>
-        </div>
-      )
+      return <CampaignEngagementFilter filter={filter} campaigns={campaigns} onChange={onChange} />
+
     case 'consent':
       return (
         <div className="flex items-center gap-2 text-xs">
@@ -432,6 +412,106 @@ function FilterInputs({
         </div>
       )
   }
+}
+
+function CampaignEngagementFilter({
+  filter,
+  campaigns,
+  onChange,
+}: {
+  filter: Extract<SegmentFilter, { type: 'campaign_engagement' }>
+  campaigns: CampaignLite[]
+  onChange: (next: SegmentFilter) => void
+}) {
+  const selected = useMemo(() => new Set(filter.campaign_ids), [filter.campaign_ids])
+  const toggle = (id: number) => {
+    const next = new Set(selected)
+    if (next.has(id)) next.delete(id)
+    else next.add(id)
+    onChange({ ...filter, campaign_ids: Array.from(next) })
+  }
+  const clearAll = () => onChange({ ...filter, campaign_ids: [] })
+  const selectAll = () => onChange({ ...filter, campaign_ids: campaigns.map((c) => c.id) })
+
+  const empty = filter.campaign_ids.length === 0
+  const totalPicked = filter.campaign_ids.length
+
+  return (
+    <div className="flex flex-col gap-2.5">
+      {/* Row 1: role — the primary question ("has this contact backed / signed up / not backed") */}
+      <div className="flex flex-wrap items-center gap-2 text-xs">
+        <span className="text-zinc-500 shrink-0">Contact who</span>
+        <select
+          value={filter.role}
+          onChange={(e) => onChange({ ...filter, role: e.target.value as CampaignEngagementRole })}
+          className="bg-zinc-900 border border-zinc-800 rounded px-2 py-1.5 text-zinc-100 focus:outline-none focus:border-zinc-600 min-w-[180px]"
+        >
+          {(Object.keys(ROLE_LABELS) as CampaignEngagementRole[]).map((r) => (
+            <option key={r} value={r}>
+              {ROLE_LABELS[r]}
+            </option>
+          ))}
+        </select>
+        <span className="text-zinc-500">on</span>
+        <span className="text-zinc-300">
+          {empty ? (
+            <span className="text-amber-400">no campaigns yet</span>
+          ) : totalPicked === 1 ? (
+            <span>1 campaign</span>
+          ) : (
+            <span>{totalPicked} campaigns</span>
+          )}
+        </span>
+        <span className="ml-auto flex items-center gap-2">
+          <button
+            type="button"
+            onClick={selectAll}
+            className="text-[10px] uppercase tracking-wide text-zinc-500 hover:text-white transition-colors"
+          >
+            Select all
+          </button>
+          <span className="text-zinc-700">·</span>
+          <button
+            type="button"
+            onClick={clearAll}
+            disabled={empty}
+            className="text-[10px] uppercase tracking-wide text-zinc-500 hover:text-white transition-colors disabled:opacity-40"
+          >
+            Clear
+          </button>
+        </span>
+      </div>
+
+      {/* Row 2: campaign multi-select. Chip-style toggle grid — matches the CountryPicker pattern. */}
+      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-1.5">
+        {campaigns.map((c) => {
+          const on = selected.has(c.id)
+          return (
+            <button
+              key={c.id}
+              type="button"
+              onClick={() => toggle(c.id)}
+              className={`text-left px-2.5 py-1.5 rounded text-[11px] transition-colors truncate ${
+                on
+                  ? 'bg-[#3B9EE8] text-white'
+                  : 'bg-zinc-900 text-zinc-400 border border-zinc-800 hover:text-white hover:border-zinc-700'
+              }`}
+              title={c.name}
+            >
+              {c.name}
+            </button>
+          )
+        })}
+      </div>
+
+      {empty && (
+        <p className="text-[11px] text-amber-400/80 flex items-center gap-1.5">
+          <span className="inline-block w-1.5 h-1.5 rounded-full bg-amber-400" />
+          Pick at least one campaign — until then this filter is ignored.
+        </p>
+      )}
+    </div>
+  )
 }
 
 function CountryPicker({

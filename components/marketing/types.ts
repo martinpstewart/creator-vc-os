@@ -26,7 +26,11 @@ export type CampaignEngagementRole =
   | 'none'
 
 export type SegmentFilter =
-  | { type: 'campaign_engagement'; campaign_id: number; role: CampaignEngagementRole }
+  // campaign_ids is the current shape (multi-select). Segments saved
+  // before that landed used a single campaign_id; the DB engine still
+  // accepts both, and the SegmentBuilder normalises legacy definitions
+  // to campaign_ids on load.
+  | { type: 'campaign_engagement'; campaign_ids: number[]; role: CampaignEngagementRole }
   | { type: 'consent'; consented: boolean }
   | { type: 'total_spend_gte'; value_pence: number }
   | { type: 'total_spend_lte'; value_pence: number }
@@ -281,15 +285,46 @@ export const COUNTRY_OPTIONS: { code: string; name: string }[] = [
   { code: 'IL', name: 'Israel' },
 ]
 
-// Friendly labels for the campaign_engagement role dropdown.
+// Friendly labels for the campaign_engagement role dropdown. Order in
+// this record drives the dropdown order — 'backer' / 'signed_up' /
+// 'not_backer' sit up top because those are the three questions a
+// marketer actually asks 95% of the time.
 export const ROLE_LABELS: Record<CampaignEngagementRole, string> = {
+  backer: 'Backed',
   signed_up: 'Signed up',
-  backer: 'Backed (any channel)',
-  signed_up_or_backer: 'Signed up or backed',
-  backed_historic: 'Backed via historic platform',
   not_backer: "Hasn't backed",
   not_signed_up: "Hasn't signed up",
+  signed_up_or_backer: 'Signed up or backed',
+  backed_historic: 'Backed via historic platform',
   none: 'No engagement',
+}
+
+// Convert a stored SegmentDefinition (possibly the legacy campaign_id
+// scalar shape) into the current campaign_ids array shape. Called
+// once when the SegmentBuilder receives an initialDefinition.
+export function normaliseSegmentDefinition(def: SegmentDefinition): SegmentDefinition {
+  return {
+    ...def,
+    filters: def.filters.map((f) => {
+      if (f.type === 'campaign_engagement') {
+        const anyF = f as unknown as {
+          campaign_ids?: unknown
+          campaign_id?: unknown
+          role: CampaignEngagementRole
+        }
+        let ids: number[]
+        if (Array.isArray(anyF.campaign_ids)) {
+          ids = anyF.campaign_ids.filter((x): x is number => typeof x === 'number')
+        } else if (typeof anyF.campaign_id === 'number') {
+          ids = [anyF.campaign_id]
+        } else {
+          ids = []
+        }
+        return { type: 'campaign_engagement', campaign_ids: ids, role: anyF.role }
+      }
+      return f
+    }),
+  }
 }
 
 export function relTime(iso: string | null | undefined): string {
