@@ -358,12 +358,12 @@ function TopCampaigns({ campaigns }: { campaigns: CampaignRow[] }) {
       <div className="px-4 md:px-5 py-3 border-b border-zinc-800">
         <p className="text-xs md:text-sm font-semibold text-white">Top campaigns</p>
         <p className="text-[10px] md:text-xs text-zinc-500 mt-0.5">
-          Historical orders rolled up to the campaign they were attributed to.
+          Total revenue attributed to each campaign, across every channel. Matches the totals on the Campaigns page.
         </p>
       </div>
       {campaigns.length === 0 ? (
         <p className="px-4 md:px-5 py-6 text-xs text-zinc-500">
-          No campaign-attributed historical orders.
+          No campaigns with attributed revenue yet.
         </p>
       ) : (
         <div className="overflow-x-auto">
