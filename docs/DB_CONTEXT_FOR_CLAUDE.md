@@ -234,12 +234,14 @@ All listed RPCs live in `public.*` and are `SECURITY DEFINER`. They're how the a
 ### Campaigns
 
 - `get_campaigns()` — flat list `(id, name, legacy_code)`.
-- `get_campaigns_list()` — campaign list with revenue + counts (gated to admin+team via `can_see_revenue()`).
-- `get_campaign_stats_v3()` — per-campaign customers/spend/orders. Also revenue-gated.
+- `get_campaigns_list()` — campaign list with revenue + counts.
+- `get_campaign_stats_v3()` — per-campaign customers/spend/orders.
 - `get_campaign_orders_summary(p_campaign_id, ...)` — KPI tile values for a campaign's Orders tab.
 - `get_campaign_orders(p_campaign_id, p_product_ids, p_start_date, p_end_date, p_kinds, p_page, p_page_size)` — paginated order list. Read this for "give me all paid orders on campaign X in Q2".
 - `get_campaign_products_v2(p_campaign_id)` — per-product (units, revenue) for a campaign.
-- `get_campaign_backers_list(p_campaign_id, p_search, p_page, p_page_size)` — paginated backers with spend. Revenue-gated.
+- `get_campaign_backers_list(p_campaign_id, p_search, p_page, p_page_size)` — paginated backers with spend.
+
+**These five RPCs deliberately have NO role check in the body.** They're called via anon SSR from `lib/supabase.ts` (Next.js `unstable_cache`) where `auth.uid()` is NULL. Role-based hiding of revenue happens at the middleware + Sidebar layers, not here. If you add `is_admin()` or `can_see_revenue()` to any of them, `/campaigns` and `/campaigns/[id]` will 500 for every user.
 - `get_campaign_catalogue_products(p_campaign_id)` — products that have ever sold against the campaign.
 - `get_campaign_historic_units_sold(p_campaign_id)` — historic-era SKU/unit breakdown.
 - `get_campaign_paying_customer_count(p_campaign_id)` — single integer.
