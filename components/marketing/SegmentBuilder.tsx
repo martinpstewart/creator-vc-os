@@ -196,7 +196,7 @@ export default function SegmentBuilder({
 
         {definition.filters.length === 0 && (
           <div className="text-xs text-zinc-500 bg-zinc-950/60 border border-dashed border-zinc-800 rounded-md px-4 py-6 text-center">
-            No filters yet — count below shows everyone (23,068). Add a filter to narrow down.
+            No filters yet — the count below is every eligible contact. Add a filter to narrow down.
           </div>
         )}
 
