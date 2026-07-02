@@ -1,0 +1,34 @@
+-- The advisor's last live "unrestricted" finding.
+--
+-- aa_01_campaigns.mv_raw_order_line_attribution currently has full
+-- ALL privileges to both anon and authenticated (relacl showed
+-- arwdDxtm for each). Materialized views can't have RLS, so this
+-- table-level grant is the only gate — and it's wide open. A signed-in
+-- user could SELECT every line-item revenue + order email + campaign
+-- attribution row via PostgREST.
+--
+-- Safe to revoke because:
+--   * No browser code reads the matview directly (grepped app/**,
+--     lib/**, components/** — every occurrence is inside a migration
+--     or an RPC body).
+--   * The RPCs that DO read it (get_campaign_stats_v3, get_campaign_
+--     products_v2, get_campaign_orders_summary, get_campaign_backers_
+--     list, build_home_dashboard_payload, campaign_orders_snapshot
+--     builder) are all SECURITY DEFINER — they run as the owner
+--     (postgres), which keeps its ACL untouched.
+--   * service_role stays granted (webhooks, cron, Robin's read-only
+--     PAT for MCP analytics).
+--   * nl_query_reader (the Ask feature's dedicated read-only role)
+--     also stays.
+--
+-- Post-fix ACL:
+--   postgres=arwdDxtm/postgres
+--   service_role=arwdDxtm/postgres
+--   nl_query_reader=r/postgres
+-- Smoke test — every downstream RPC unchanged:
+--   get_campaign_stats_v3    → 16 rows
+--   get_campaigns_list       → 16 rows
+--   get_campaign_products_v2 → 36 rows
+--   home_dashboard_impl      → $12.36M combined revenue
+
+revoke all on aa_01_campaigns.mv_raw_order_line_attribution from anon, authenticated;
