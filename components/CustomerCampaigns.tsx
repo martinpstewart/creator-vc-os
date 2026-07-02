@@ -3,6 +3,9 @@
 import { useState, useEffect } from 'react'
 import { createClient } from '@/lib/supabase-browser'
 import Link from 'next/link'
+import { useAuth } from './AuthProvider'
+import { isOwner } from '@/lib/auth'
+import { formatErrorMessage } from '@/lib/format-error'
 
 type CampaignDetail = { campaign_name: string; campaign_id: number; legacy_code: string; source: string }
 
@@ -100,9 +103,27 @@ function HeaderCell({ label, children }: { label: string; children: React.ReactN
   )
 }
 
-function OrderHeader({ ref, line }: { ref: string; line: OrderLine }) {
+function OrderHeader({
+  ref,
+  line,
+  ownerControls,
+}: {
+  ref: string
+  line: OrderLine
+  // When rendered as the owner viewing a Shopify (raw_orders) row, the
+  // caller passes in a busy flag + handlers so we can show a manual
+  // mark / unmark action alongside the shipping badge. Non-owners and
+  // non-shopify rows get `undefined` and see the read-only header.
+  ownerControls?: {
+    busy: boolean
+    onMarkPaid: () => Promise<void>
+    onUnmark: () => Promise<void>
+  }
+}) {
   const deliveryLabel = line.delivery_status ? DELIVERY_LABEL[line.delivery_status] : '—'
   const deliveryClass = line.delivery_status ? DELIVERY_CLASS[line.delivery_status] : 'bg-zinc-800 text-zinc-400 border-zinc-700'
+  const showMark   = ownerControls && line.delivery_status === 'pending_shipping'
+  const showUnmark = ownerControls && line.delivery_status === 'shipping_paid'
   return (
     <div className="grid grid-cols-[1fr_auto_auto] gap-4 md:gap-6 px-6 py-3 bg-zinc-900/60 border-b border-zinc-800/60">
       <HeaderCell label="Order Number">
@@ -114,9 +135,39 @@ function OrderHeader({ ref, line }: { ref: string; line: OrderLine }) {
         </span>
       </HeaderCell>
       <HeaderCell label="Shipping Status">
-        <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium border uppercase tracking-wide ${deliveryClass}`}>
-          {deliveryLabel}
-        </span>
+        <div className="flex items-center gap-2">
+          <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium border uppercase tracking-wide ${deliveryClass}`}>
+            {deliveryLabel}
+          </span>
+          {showMark && (
+            <button
+              type="button"
+              disabled={ownerControls!.busy}
+              onClick={(e) => {
+                e.stopPropagation()
+                void ownerControls!.onMarkPaid()
+              }}
+              className="text-[10px] font-medium px-2 py-0.5 rounded border border-sky-500/40 text-sky-300 hover:text-white hover:bg-sky-500/20 transition-colors disabled:opacity-50"
+              title="Owner-only: mark this order's shipping as paid via an off-poll channel."
+            >
+              {ownerControls!.busy ? '…' : 'Mark shipping paid'}
+            </button>
+          )}
+          {showUnmark && (
+            <button
+              type="button"
+              disabled={ownerControls!.busy}
+              onClick={(e) => {
+                e.stopPropagation()
+                void ownerControls!.onUnmark()
+              }}
+              className="text-[10px] font-medium px-2 py-0.5 rounded border border-zinc-700 text-zinc-400 hover:text-white hover:border-zinc-500 transition-colors disabled:opacity-50"
+              title="Owner-only: remove a manual shipping-paid mark (no-op if none exists)."
+            >
+              {ownerControls!.busy ? '…' : 'Unmark'}
+            </button>
+          )}
+        </div>
       </HeaderCell>
     </div>
   )
@@ -171,7 +222,19 @@ function OrderLinesTable({ lines, isIsod }: { lines: OrderLine[]; isIsod: boolea
   )
 }
 
-function OrdersTable({ lines }: { lines: OrderLine[] }) {
+function OrdersTable({
+  lines,
+  ownerHooks,
+}: {
+  lines: OrderLine[]
+  // Only supplied when the current viewer is the owner. Undefined for
+  // everyone else so the manual-mark buttons never render.
+  ownerHooks?: {
+    busyOrderId: string | null
+    onMarkPaid: (orderId: string, orderRef: string) => Promise<void>
+    onUnmark:   (orderId: string, orderRef: string) => Promise<void>
+  }
+}) {
   if (lines.length === 0) {
     return <p className="px-8 py-4 text-xs text-zinc-500">No order details found for this campaign.</p>
   }
@@ -180,9 +243,28 @@ function OrdersTable({ lines }: { lines: OrderLine[] }) {
     <div>
       {orders.map(({ ref, lines: orderLines }) => {
         const isIsod = orderLines.every(l => l.purchase_type === 'isod')
+        // Manual shipping marks only apply to Shopify (raw_orders) rows.
+        // ISOD / historic branches hard-code delivery_status='dispatched'
+        // in the RPC, so this check is defensive but keeps the button
+        // from ever appearing on rows where it wouldn't take effect.
+        const headLine = orderLines[0]
+        const canMark =
+          !!ownerHooks &&
+          headLine.purchase_type === 'shopify' &&
+          !!headLine.order_id
         return (
           <div key={ref} className="border-b border-zinc-800/40 last:border-0">
-            <OrderHeader ref={ref} line={orderLines[0]} />
+            <OrderHeader
+              ref={ref}
+              line={headLine}
+              ownerControls={canMark
+                ? {
+                    busy: ownerHooks!.busyOrderId === headLine.order_id,
+                    onMarkPaid: () => ownerHooks!.onMarkPaid(headLine.order_id, ref),
+                    onUnmark:   () => ownerHooks!.onUnmark(headLine.order_id, ref),
+                  }
+                : undefined}
+            />
             <OrderLinesTable lines={orderLines} isIsod={isIsod} />
           </div>
         )
@@ -205,14 +287,19 @@ export default function CustomerCampaigns({
   const [orders, setOrders] = useState<Record<number, OrderLine[]>>({})
   const [fetchErrors, setFetchErrors] = useState<Record<number, string>>({})
   const [loading, setLoading] = useState<number | null>(null)
+  // Which order id is currently mid-mark/unmark, so we can disable the
+  // button + show a spinner without blocking any other row.
+  const [markBusyOrderId, setMarkBusyOrderId] = useState<string | null>(null)
   const supabase = createClient()
+  const { user } = useAuth()
+  const ownerViewing = isOwner(user?.email)
 
   const focusCampaign = initialCampaignId
     ? campaigns.find(c => c.campaign_id === initialCampaignId)
     : undefined
 
-  async function fetchOrders(campaignId: number) {
-    if (orders[campaignId] !== undefined) return
+  async function fetchOrders(campaignId: number, opts: { force?: boolean } = {}) {
+    if (!opts.force && orders[campaignId] !== undefined) return
     setLoading(campaignId)
     try {
       const { data, error } = await supabase.rpc('get_customer_campaign_orders', {
@@ -224,11 +311,68 @@ export default function CustomerCampaigns({
         setFetchErrors(prev => ({ ...prev, [campaignId]: `${error.code ?? ''}: ${error.message}` }))
         setOrders(prev => ({ ...prev, [campaignId]: [] }))
       } else {
-        console.log('[fetchOrders] campaign', campaignId, 'rows:', data?.length ?? 0, data)
         setOrders(prev => ({ ...prev, [campaignId]: (data ?? []) as OrderLine[] }))
+        setFetchErrors(prev => {
+          if (prev[campaignId] === undefined) return prev
+          const next = { ...prev }
+          delete next[campaignId]
+          return next
+        })
       }
     } finally {
       setLoading(null)
+    }
+  }
+
+  // Force-refetch a campaign's orders regardless of cached state. Used
+  // after a manual mark/unmark so the just-flipped row's delivery_status
+  // reconciles against the DB rather than trusting an optimistic update.
+  async function refetchCampaign(campaignId: number) {
+    return fetchOrders(campaignId, { force: true })
+  }
+
+  // Build a per-campaign owner-hooks bundle to hand down to OrdersTable.
+  // Non-owners get undefined so buttons never render.
+  function ownerHooksFor(campaignId: number) {
+    if (!ownerViewing) return undefined
+    return {
+      busyOrderId: markBusyOrderId,
+      onMarkPaid: async (orderId: string, orderRef: string) => {
+        if (!window.confirm(`Mark shipping as paid for order ${orderRef}?`)) return
+        const note = window.prompt(
+          'Reason (optional — e.g. "PayPal, pre-poll" or "paid via Glide 2026-05-29"):',
+          '',
+        )
+        if (note === null) return  // user cancelled the prompt
+        setMarkBusyOrderId(orderId)
+        try {
+          const { error } = await supabase.rpc('set_shipping_paid_mark', {
+            p_shopify_order_id: orderId,
+            p_note: note.trim() ? note.trim() : null,
+          })
+          if (error) throw error
+          await refetchCampaign(campaignId)
+        } catch (e) {
+          alert(`Mark shipping paid failed: ${formatErrorMessage(e)}`)
+        } finally {
+          setMarkBusyOrderId(null)
+        }
+      },
+      onUnmark: async (orderId: string, orderRef: string) => {
+        if (!window.confirm(`Remove manual shipping-paid mark for order ${orderRef}? (No-op if none exists.)`)) return
+        setMarkBusyOrderId(orderId)
+        try {
+          const { error } = await supabase.rpc('clear_shipping_paid_mark', {
+            p_shopify_order_id: orderId,
+          })
+          if (error) throw error
+          await refetchCampaign(campaignId)
+        } catch (e) {
+          alert(`Unmark failed: ${formatErrorMessage(e)}`)
+        } finally {
+          setMarkBusyOrderId(null)
+        }
+      },
     }
   }
 
@@ -293,7 +437,7 @@ export default function CustomerCampaigns({
           ) : fetchErrors[initialCampaignId!] ? (
             <p className="px-8 py-6 text-xs text-red-400">Error: {fetchErrors[initialCampaignId!]}</p>
           ) : orders[initialCampaignId!] !== undefined ? (
-            <OrdersTable lines={orders[initialCampaignId!]} />
+            <OrdersTable lines={orders[initialCampaignId!]} ownerHooks={ownerHooksFor(initialCampaignId!)} />
           ) : (
             <p className="px-8 py-6 text-xs text-zinc-500 animate-pulse">Loading orders…</p>
           )}
@@ -348,7 +492,7 @@ export default function CustomerCampaigns({
                           ) : fetchErrors[camp.campaign_id] ? (
                             <p className="px-8 py-4 text-xs text-red-400">Error: {fetchErrors[camp.campaign_id]}</p>
                           ) : orders[camp.campaign_id] !== undefined ? (
-                            <OrdersTable lines={orders[camp.campaign_id]} />
+                            <OrdersTable lines={orders[camp.campaign_id]} ownerHooks={ownerHooksFor(camp.campaign_id)} />
                           ) : (
                             <p className="px-8 py-4 text-xs text-zinc-500">No order details found.</p>
                           )}
